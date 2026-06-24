@@ -103,6 +103,18 @@ public class StoraApiClient
 
     #region Files
     /// <summary>
+    /// 📁 按路径创建文件夹（不存在则创建）
+    /// </summary>
+    public async Task<FileItem> CreateFolderByPathAsync(string path)
+    {
+        var body = new { path };
+        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/folders/by-path", body, JsonOpts);
+        r.EnsureSuccessStatusCode();
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("创建文件夹失败");
+    }
+
+    /// <summary>
     /// 🔄 更新文件内容（触发后端版本创建）
     /// </summary>
     public async Task UpdateFileContentAsync(long fileId, Stream fileStream, string fileName, string mimeType = "application/octet-stream")
@@ -316,6 +328,7 @@ public class StoraApiClient
 
     #endregion
 }
+
 
 
 

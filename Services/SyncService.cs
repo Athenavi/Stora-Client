@@ -79,11 +79,35 @@ public class SyncService
     {
         if (_isRunning || !IsConfigured) return;
         _isRunning = true;
+
+        // 确保 //Sync 云端文件夹存在
+        await EnsureSyncFolderAsync();
+
         await FullSyncAsync();
         var ms = _store.Config.IntervalSeconds * 1000;
         _syncTimer = new Timer(async _ => await PollCloudAsync(), null, ms, ms);
         StartWatcher();
         StateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 确保云端 //Sync 文件夹存在，并将 CloudFolderId 指向它
+    /// </summary>
+    private async Task EnsureSyncFolderAsync()
+    {
+        try
+        {
+            var folder = await _api.CreateFolderByPathAsync("Sync");
+            if (_store.Config.CloudFolderId != folder.Id.ToString())
+            {
+                _store.Config.CloudFolderId = folder.Id.ToString();
+                SaveState();
+            }
+        }
+        catch
+        {
+            // 如果创建失败，使用根目录
+        }
     }
 
     public void Stop()
@@ -380,4 +404,6 @@ public class SyncService
         SaveState(); StateChanged?.Invoke();
     }
 }
+
+
 
