@@ -211,7 +211,7 @@ public class SyncService
         long pid = long.TryParse(_store.Config.CloudFolderId, out var rid) ? rid : 0;
         foreach (var seg in dir.Split('/', StringSplitOptions.RemoveEmptyEntries))
         {
-            try { var c = await _api.CreateFolderAsync(seg, pid.ToString()); pid = c.Id; } catch { }
+            try { var c = await _api.CreateFolderAsync(seg, pid > 0 ? pid.ToString() : null); pid = c.Id; } catch { }
         }
         return pid;
     }

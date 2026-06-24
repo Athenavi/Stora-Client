@@ -122,7 +122,7 @@ public class StoraApiClient
     public async Task<FileItem> CreateFolderAsync(string name, string? parentId = null)
     {
         object? pid = null;
-        if (long.TryParse(parentId, out var n)) pid = n;
+        if (long.TryParse(parentId, out var n) && n > 0) pid = n;
         var body = new { name, parent_id = pid };
         var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/folders", body, JsonOpts); r.EnsureSuccessStatusCode();
         var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
