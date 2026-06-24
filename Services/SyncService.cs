@@ -200,8 +200,21 @@ public class SyncService
 
     private async Task EnsureSyncRootAsync()
     {
-        try { var f = await _api.CreateFolderByPathAsync("Sync"); _store.Config.CloudFolderId = f.Id.ToString(); SaveState(); }
+        // Try to create the Sync folder (first run)
+        try { var f = await _api.CreateFolderByPathAsync("Sync"); _store.Config.CloudFolderId = f.Id.ToString(); SaveState(); return; }
         catch { }
+        
+        // If creation failed (already exists), find it by listing root
+        if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
+        {
+            try
+            {
+                var rootFiles = await _api.GetFilesAsync(null, 1, 200);
+                var syncFolder = rootFiles.Items.FirstOrDefault(f => f.IsFolder && f.Name == "Sync");
+                if (syncFolder != null) { _store.Config.CloudFolderId = syncFolder.Id.ToString(); SaveState(); }
+            }
+            catch { }
+        }
     }
 
     private async Task<long> EnsureParentFolderAsync(string rel)
