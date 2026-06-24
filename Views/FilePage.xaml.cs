@@ -2,6 +2,9 @@
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Media.Core;
+using Microsoft.UI.Xaml.Media;
+using Windows.Media.Core;
 using StoraDesktop.Models;
 using StoraDesktop.ViewModels;
 using System;
@@ -179,9 +182,52 @@ public sealed partial class FilePage : Page
     {
         if (f == null) return;
         var baseUrl = App.Services.GetRequiredService<Services.StoraApiClient>().BaseUrl;
-        var url = $"{baseUrl}/api/v2/files/preview/{f.Id}/{Uri.EscapeDataString(f.Name ?? "")}";
+
+        var ext = (System.IO.Path.GetExtension(f.Name ?? "") ?? "").ToLower();
+        var downloadUrl = $"{baseUrl}/api/v2/files/{f.Id}/download";
+        var encodedUrl = Uri.EscapeDataString(downloadUrl);
         PreviewTitle.Text = $"Preview: {f.Name}";
-        PreviewWebView.Source = new Uri(url);
+
+        PreviewWebView.Visibility = Visibility.Collapsed;
+        PreviewMediaPlayer.Visibility = Visibility.Collapsed;
+        PreviewMediaPlayer.Source = null;
+
+        var videoExts = new[] { ".mp4", ".webm", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".m4v" };
+        var audioExts = new[] { ".mp3", ".wav", ".ogg", ".flac", ".aac", ".wma", ".m4a" };
+        var imageExts = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".ico" };
+        var officeExts = new[] { ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt" };
+        var textExts = new[] { ".txt", ".csv", ".md", ".json", ".xml", ".log" };
+
+        if (Array.IndexOf(videoExts, ext) >= 0 || Array.IndexOf(audioExts, ext) >= 0)
+        {
+            PreviewMediaPlayer.Source = MediaSource.CreateFromUri(new Uri(downloadUrl));
+            PreviewMediaPlayer.Visibility = Visibility.Visible;
+        }
+        else if (Array.IndexOf(imageExts, ext) >= 0)
+        {
+            PreviewWebView.Source = new Uri(downloadUrl);
+            PreviewWebView.Visibility = Visibility.Visible;
+        }
+        else if (Array.IndexOf(officeExts, ext) >= 0)
+        {
+            PreviewWebView.Source = new Uri($"https://view.officeapps.live.com/op/view.aspx?src={encodedUrl}");
+            PreviewWebView.Visibility = Visibility.Visible;
+        }
+        else if (ext == ".pdf")
+        {
+            PreviewWebView.Source = new Uri($"https://docs.google.com/viewer?url={encodedUrl}&embedded=true");
+            PreviewWebView.Visibility = Visibility.Visible;
+        }
+        else if (Array.IndexOf(textExts, ext) >= 0)
+        {
+            PreviewWebView.Source = new Uri(downloadUrl);
+            PreviewWebView.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            PreviewTitle.Text = $"Preview not available for {f.Name}";
+            return;
+        }
         PreviewOverlay.Visibility = Visibility.Visible;
     }
 

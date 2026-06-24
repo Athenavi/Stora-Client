@@ -101,6 +101,7 @@
             </Grid>
             <Grid Grid.Row="1">
                 <WebView2 x:Name="PreviewWebView" />
+                <MediaPlayerElement x:Name="PreviewMediaPlayer" Visibility="Collapsed" AutoPlay="True" />
             </Grid>
         </Grid>
         <Grid Grid.Row="3" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
