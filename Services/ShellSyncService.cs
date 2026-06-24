@@ -88,4 +88,53 @@ public static class ShellSyncService
         }
         catch { }
     }
+
+    // ── Status file for Shell Extension ──
+
+    private static string GetStatusDir()
+    {
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Stora", "status");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    public static void WriteFileStatus(string filePath, string status)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(filePath)) return;
+            var statusFile = Path.Combine(GetStatusDir(),
+                filePath.Replace('\\', '_').Replace(':', '_') + ".status");
+            File.WriteAllText(statusFile, status);
+        }
+        catch { }
+    }
+
+    public static void RemoveFileStatus(string filePath)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(filePath)) return;
+            var statusFile = Path.Combine(GetStatusDir(),
+                filePath.Replace('\\', '_').Replace(':', '_') + ".status");
+            if (File.Exists(statusFile)) File.Delete(statusFile);
+        }
+        catch { }
+    }
+
+    public static void ClearAllStatus()
+    {
+        try
+        {
+            var dir = GetStatusDir();
+            if (Directory.Exists(dir))
+            {
+                foreach (var f in Directory.GetFiles(dir, "*.status"))
+                    File.Delete(f);
+            }
+        }
+        catch { }
+    }
 }
