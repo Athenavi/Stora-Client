@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Stora (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Stora (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

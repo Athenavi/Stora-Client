@@ -1,0 +1,31 @@
+﻿## .NET
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+*.userprefs
+
+## Visual Studio
+.vs/
+*.csproj.user
+*.dbmdl
+*.jfm
+
+## Windows App SDK
+AppPackages/
+BundleArtifacts/
+*.msix
+*.msixupload
+*.appx
+*.appxupload
+
+## IDE
+.idea/
+*.swp
+*.swo
+*~
+
+## OS
+Thumbs.db
+.DS_Store
