@@ -102,6 +102,18 @@ public class StoraApiClient
     #endregion
 
     #region Files
+    /// <summary>
+    /// 🔄 更新文件内容（触发后端版本创建）
+    /// </summary>
+    public async Task UpdateFileContentAsync(long fileId, Stream fileStream, string fileName, string mimeType = "application/octet-stream")
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(fileStream), "content", fileName);
+        if (!string.IsNullOrEmpty(mimeType)) content.Add(new StringContent(mimeType), "mime_type");
+        var r = await _httpClient.PutAsync($"{BaseUrl}/api/v2/files/{fileId}/content", content);
+        r.EnsureSuccessStatusCode();
+    }
+
 
     public async Task<FileListData> GetFilesAsync(string? folderId = null, int page = 1, int perPage = 50, string? fileType = null, bool? isFavorite = null)
     {
@@ -285,4 +297,26 @@ public class StoraApiClient
     }
 
     #endregion
+
+    #region Versions
+
+    public async Task<List<FileVersionInfo>> GetVersionsAsync(long fileId)
+    {
+        var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/files/{fileId}/versions");
+        r.EnsureSuccessStatusCode();
+        var list = await r.Content.ReadFromJsonAsync<List<FileVersionInfo>>(JsonOpts);
+        return list ?? new List<FileVersionInfo>();
+    }
+
+    public async Task RestoreVersionAsync(long fileId, long versionId)
+    {
+        var r = await _httpClient.PostAsync($"{BaseUrl}/api/v2/files/{fileId}/versions/{versionId}/restore", null);
+        r.EnsureSuccessStatusCode();
+    }
+
+    #endregion
 }
+
+
+
+

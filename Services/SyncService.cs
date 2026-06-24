@@ -323,8 +323,18 @@ public class SyncService
             catch { }
 
             using var s = File.OpenRead(fullPath);
-            var u = await _api.UploadFileAsync(s, file.FileName, _store.Config.CloudFolderId);
-            file.CloudId = u.Id; file.CloudHash = file.LocalHash; file.Status = "synced"; file.Progress = 100; FileStatusChanged?.Invoke(file);
+            if (file.CloudId != null)
+            {
+                // 已有云端 ID → 用内容更新 API（后端自动创建版本快照 + 维护指纹引用计数）
+                await _api.UpdateFileContentAsync(file.CloudId.Value, s, file.FileName);
+            }
+            else
+            {
+                // 新文件 → 创建
+                var u = await _api.UploadFileAsync(s, file.FileName, _store.Config.CloudFolderId);
+                file.CloudId = u.Id;
+            }
+            file.CloudHash = file.LocalHash; file.Status = "synced"; file.Progress = 100; FileStatusChanged?.Invoke(file);
         }
         catch (Exception ex) { file.Status = "error"; file.Error = ex.Message; FileStatusChanged?.Invoke(file); }
     }
@@ -370,3 +380,4 @@ public class SyncService
         SaveState(); StateChanged?.Invoke();
     }
 }
+

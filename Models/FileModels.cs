@@ -61,7 +61,6 @@ public class FileItem
     };
 }
 
-// API 外层响应
 public class ApiResponse<T>
 {
     [JsonPropertyName("success")]
@@ -71,7 +70,6 @@ public class ApiResponse<T>
     public T? Data { get; set; }
 }
 
-// 文件列表数据
 public class FileListData
 {
     [JsonPropertyName("items")]
@@ -195,4 +193,31 @@ public class OfflineDownloadItem
 
     [JsonPropertyName("created_at")]
     public string CreatedAt { get; set; } = "";
+}
+
+// ===== 版本模型 =====
+public class FileVersionInfo
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("version_num")]
+    public int VersionNum { get; set; }
+
+    [JsonPropertyName("file_size")]
+    public long FileSize { get; set; }
+
+    [JsonPropertyName("file_hash")]
+    public string? FileHash { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public string? CreatedAt { get; set; }
+
+    public string SizeDisplay => FileSize switch
+    {
+        < 1024 => $"{FileSize} B",
+        < 1024 * 1024 => $"{FileSize / 1024.0:F1} KB",
+        < 1024 * 1024 * 1024 => $"{FileSize / (1024.0 * 1024):F1} MB",
+        _ => $"{FileSize / (1024.0 * 1024 * 1024):F2} GB"
+    };
 }
