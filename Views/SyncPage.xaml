@@ -9,16 +9,16 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="32" />
         </Grid.RowDefinitions>
 
         <!-- 设置区域 -->
-        <ScrollViewer Grid.Row="0" MaxHeight="320">
-            <StackPanel Padding="16" Spacing="10">
+        <ScrollViewer Grid.Row="0" MaxHeight="360">
+            <StackPanel Padding="16" Spacing="8">
                 <TextBlock Text="☁ 同步盘设置" FontSize="20" FontWeight="Bold" />
 
-                <!-- 本地文件夹 -->
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -26,60 +26,75 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="本地文件夹:" VerticalAlignment="Center" />
-                    <TextBox Grid.Column="1" Text="{x:Bind VM.LocalPath, Mode=OneWay}" IsReadOnly="True"
-                             PlaceholderText="请选择同步文件夹" />
+                    <TextBox Grid.Column="1" Text="{x:Bind VM.LocalPath, Mode=OneWay}" IsReadOnly="True" PlaceholderText="请选择同步文件夹" />
                     <Button Grid.Column="2" Content="选择" Command="{x:Bind VM.SelectFolderCommand}" />
                 </Grid>
 
-                <!-- 同步频率 -->
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="同步频率:" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" ItemsSource="{x:Bind VM.IntervalOptions}"
-                              SelectedIndex="{x:Bind VM.IntervalIndex, Mode=TwoWay}" />
+                    <ComboBox Grid.Column="1" ItemsSource="{x:Bind VM.IntervalOptions}" SelectedIndex="{x:Bind VM.IntervalIndex, Mode=TwoWay}" />
                 </Grid>
 
-                <!-- 冲突处理 -->
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="冲突处理:" VerticalAlignment="Center" />
-                    <ComboBox Grid.Column="1" ItemsSource="{x:Bind VM.ConflictOptions}"
-                              SelectedIndex="{x:Bind VM.ConflictIndex, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Text="内容冲突:" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" ItemsSource="{x:Bind VM.ConflictOptions}" SelectedIndex="{x:Bind VM.ConflictIndex, Mode=TwoWay}" />
                 </Grid>
 
-                <!-- 白名单 -->
-                <TextBox Header="白名单（仅同步这些类型，逗号分隔，留空=全部）"
-                         Text="{x:Bind VM.WhitelistText, Mode=TwoWay}"
-                         PlaceholderText="例如: *.docx,*.pdf,*.jpg" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="命名冲突:" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1" ItemsSource="{x:Bind VM.NamingOptions}" SelectedIndex="{x:Bind VM.NamingIndex, Mode=TwoWay}" />
+                </Grid>
 
-                <!-- 黑名单 -->
-                <TextBox Header="黑名单（不同步这些类型，逗号分隔）"
-                         Text="{x:Bind VM.BlacklistText, Mode=TwoWay}"
-                         PlaceholderText="例如: *.tmp,~$*" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="60" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <CheckBox Grid.Column="0" Content="保留历史版本" IsChecked="{x:Bind VM.KeepVersions, Mode=TwoWay}" />
+                    <TextBox Grid.Column="1" Text="{x:Bind VM.MaxVersions, Mode=TwoWay}" IsEnabled="{x:Bind VM.KeepVersions, Mode=OneWay}" />
+                    <TextBlock Grid.Column="2" Text="最大版本数" VerticalAlignment="Center" Opacity="0.6" />
+                </Grid>
 
-                <!-- 开机自启 -->
-                <CheckBox Content="开机自动启动同步" IsChecked="{x:Bind VM.AutoStart, Mode=TwoWay}" />
+                <TextBox Header="白名单（留空=全部）" Text="{x:Bind VM.WhitelistText, Mode=TwoWay}" PlaceholderText="*.docx,*.pdf" />
+                <TextBox Header="黑名单" Text="{x:Bind VM.BlacklistText, Mode=TwoWay}" PlaceholderText="*.tmp,~$*" />
+                <CheckBox Content="开机自动启动" IsChecked="{x:Bind VM.AutoStart, Mode=TwoWay}" />
 
-                <!-- 控制按钮 -->
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Content="{x:Bind VM.IsRunning, Mode=OneWay, Converter={StaticResource BoolToSyncText}}"
                             Command="{x:Bind VM.ToggleSyncCommand}"
-                            Style="{StaticResource AccentButtonStyle}"
-                            Height="36" MinWidth="120" />
+                            Style="{StaticResource AccentButtonStyle}" Height="36" MinWidth="120" />
                     <TextBlock Text="{x:Bind VM.Status, Mode=OneWay}" VerticalAlignment="Center" Opacity="0.7" />
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
 
+        <!-- 命名冲突提示 -->
+        <ItemsControl Grid.Row="1" ItemsSource="{x:Bind VM.NamingConflicts, Mode=OneWay}" Margin="8,0">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="models:NamingConflict">
+                    <Grid Background="#2D2D2D" Padding="8,4" CornerRadius="4" Margin="0,2">
+                        <TextBlock Text="{x:Bind Resolution}" FontSize="12" Foreground="#FFB900" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
         <!-- 文件列表 -->
-        <ListView x:Name="SyncList" Grid.Row="1" ItemsSource="{x:Bind VM.Files, Mode=OneWay}"
-                  Margin="0,4,0,0">
+        <ListView x:Name="SyncList" Grid.Row="2" ItemsSource="{x:Bind VM.Files, Mode=OneWay}" Margin="4,4,0,0"
+                  DoubleTapped="OnFileDoubleTap">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SyncFileState">
                     <Grid Padding="8,4" ColumnSpacing="8">
@@ -87,30 +102,28 @@
                             <ColumnDefinition Width="28" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="60" />
-                            <ColumnDefinition Width="50" />
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="30" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{x:Bind StatusIcon}" FontSize="16" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind FileName}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{x:Bind Error}" FontSize="11" Foreground="#E81123"
-                                       Visibility="{x:Bind Error, Converter={StaticResource StringToVisibility}}" />
+                            <TextBlock Text="{x:Bind Error}" FontSize="11" Foreground="#E81123" />
                         </StackPanel>
-                        <TextBlock Grid.Column="2" Text="{x:Bind SizeDisplay}"
-                                   VerticalAlignment="Center" Opacity="0.6" FontSize="12" />
-                        <TextBlock Grid.Column="3" Text="{x:Bind Direction}"
-                                   VerticalAlignment="Center" Opacity="0.6" FontSize="12" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind SizeDisplay}" VerticalAlignment="Center" Opacity="0.6" FontSize="12" />
+                        <TextBlock Grid.Column="3" Text="v" VerticalAlignment="Center" Opacity="0.4" FontSize="12" />
+                        <TextBlock Grid.Column="4" Text="{x:Bind CurrentVersion}" VerticalAlignment="Center" Opacity="0.6" FontSize="12" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
 
         <!-- 状态栏 -->
-        <Grid Grid.Row="2" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
+        <Grid Grid.Row="3" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
             <TextBlock Padding="8,4" FontSize="12" Opacity="0.6">
-                <Run Text="{x:Bind VM.SyncedCount, Mode=OneWay}" />
-                <Run Text="/" />
-                <Run Text="{x:Bind VM.TotalCount, Mode=OneWay}" />
-                <Run Text=" 个文件已同步" />
+                <Run Text="{x:Bind VM.SyncedCount, Mode=OneWay}" /><Run Text=" / " />
+                <Run Text="{x:Bind VM.TotalCount, Mode=OneWay}" /><Run Text=" 个已同步" />
+                <Run Text=" | 冲突: " /><Run Text="{x:Bind VM.ConflictCount, Mode=OneWay}" />
             </TextBlock>
         </Grid>
     </Grid>
