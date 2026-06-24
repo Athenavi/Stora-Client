@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
-using StoraDesktop;
 using StoraDesktop.Services;
 using StoraDesktop.ViewModels;
 using StoraDesktop.Views;
@@ -17,16 +16,26 @@ public partial class App : Application
     {
         this.InitializeComponent();
 
-        var serviceCollection = new ServiceCollection();
-        serviceCollection.AddSingleton<StoraApiClient>();
-        serviceCollection.AddTransient<LoginViewModel>();
-        serviceCollection.AddTransient<LoginPage>();
-        serviceCollection.AddTransient<MainViewModel>();   // 新增
-        serviceCollection.AddTransient<MainPage>();         // 新增
-        Services = serviceCollection.BuildServiceProvider();
+        var sc = new ServiceCollection();
+        sc.AddSingleton<StoraApiClient>();
+        sc.AddTransient<LoginViewModel>();
+        sc.AddTransient<LoginPage>();
+        sc.AddTransient<FileViewModel>();
+        sc.AddTransient<FilePage>();
+        sc.AddTransient<ShareViewModel>();
+        sc.AddTransient<SharePage>();
+        sc.AddTransient<FavoriteViewModel>();
+        sc.AddTransient<FavoritePage>();
+        sc.AddTransient<PhotoViewModel>();
+        sc.AddTransient<PhotoPage>();
+        sc.AddTransient<VaultViewModel>();
+        sc.AddTransient<VaultPage>();
+        sc.AddTransient<TagViewModel>();
+        sc.AddTransient<TagPage>();
+        Services = sc.BuildServiceProvider();
     }
 
-    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         MainAppWindow = new MainWindow();
         MainAppWindow.Activate();
