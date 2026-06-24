@@ -218,14 +218,25 @@ public class SyncService
                 }
                 catch
                 {
-                    // Folder may exist - find it
+                    // Find existing folder first
+                    var segFound = false;
                     try
                     {
-                        var existingFiles = await _api.GetFilesAsync(pid > 0 ? pid.ToString() : null, 1, 200);
-                        var found = existingFiles.Items.FirstOrDefault(f => f.IsFolder && f.Name == seg);
-                        if (found != null) pid = found.Id;
+                        var list = await _api.GetFilesAsync(pid > 0 ? pid.ToString() : null, 1, 200);
+                        var match = list.Items.FirstOrDefault(f => f.IsFolder && f.Name == seg);
+                        if (match != null) { pid = match.Id; segFound = true; }
                     }
                     catch { }
+                    
+                    if (!segFound)
+                    {
+                        try
+                        {
+                            var c2 = await _api.CreateFolderAsync(seg, pid > 0 ? pid.ToString() : null);
+                            pid = c2.Id;
+                        }
+                        catch { }
+                    }
                 }
         }
         return pid;
