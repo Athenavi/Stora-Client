@@ -65,7 +65,7 @@ public partial class SyncViewModel : ObservableObject
         SaveConfig();
         if (_sync.IsRunning)
         {
-            ShellSyncService.UnregisterSyncRoot(_localPath);
+            ShellSyncService.UnregisterSyncRoot();
             _sync.Stop();
         }
         else

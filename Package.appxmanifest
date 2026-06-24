@@ -48,6 +48,7 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="storageProviderSync" />
     <systemai:Capability Name="systemAIModels"/>
   </Capabilities>
 </Package>
