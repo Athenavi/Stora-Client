@@ -6,6 +6,7 @@ using StoraDesktop.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
+using Microsoft.UI.Xaml;
 using Windows.Storage;
 using System.IO;
 
@@ -19,9 +20,9 @@ public partial class VaultViewModel : ObservableObject
 
     // View state: "list" / "unlock" / "files"
     [ObservableProperty] private string _viewState = "list";
-    public bool IsListView => _viewState == "list";
-    public bool IsUnlockView => _viewState == "unlock";
-    public bool IsFilesView => _viewState == "files";
+    public Visibility IsListView => _viewState == "list" ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility IsUnlockView => _viewState == "unlock" ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility IsFilesView => _viewState == "files" ? Visibility.Visible : Visibility.Collapsed;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private string _status = "Ready";
     [ObservableProperty] private string _vaultName = "";
