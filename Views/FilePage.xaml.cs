@@ -23,6 +23,7 @@ public sealed partial class FilePage : Page
         {
             await VM.InitAsync();
             AttachScroll();
+            FileListView.SelectionChanged += OnSelectionChanged;
         };
     }
 
@@ -104,21 +105,58 @@ public sealed partial class FilePage : Page
             VM.OpenFolderCommand.Execute(f);
     }
 
+    private void OnSelectionChanged(object s, SelectionChangedEventArgs e)
+    {
+        VM.SelectedFiles.Clear();
+        foreach (var item in FileListView.SelectedItems)
+            if (item is FileItem fi) VM.SelectedFiles.Add(fi);
+        VM.SelectedCount = VM.SelectedFiles.Count;
+    }
+
+    private void OnClearSelection(object s, RoutedEventArgs e)
+    {
+        FileListView.SelectedItems.Clear();
+        VM.ClearSelectionCommand.Execute(null);
+    }
+
+    private async void OnBatchDelete(object s, RoutedEventArgs e)
+    {
+        await VM.DeleteSelectedCommand.ExecuteAsync(null);
+    }
+
     private void OnRightTap(object s, RightTappedRoutedEventArgs e)
     {
         if ((e.OriginalSource as FrameworkElement)?.DataContext is FileItem f)
         {
             VM.SelectedFile = f;
+            if (!VM.SelectedFiles.Contains(f))
+            {
+                VM.SelectedFiles.Clear();
+                VM.SelectedFiles.Add(f);
+                VM.SelectedCount = 1;
+            }
             ShowFileMenu(e);
         }
     }
 
     private async void ShowFileMenu(RightTappedRoutedEventArgs e)
     {
+        var menu = new MenuFlyout();
+
+        if (VM.SelectedFiles.Count > 1)
+        {
+            AddItem(menu, "Share All", async () => await VM.ShareSelectedCommand.ExecuteAsync(null));
+            AddItem(menu, "Copy All", () => VM.CopyFilesCommand.Execute(null));
+            AddItem(menu, "Cut All", () => VM.CutFilesCommand.Execute(null));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            AddItem(menu, "Delete All", async () => await VM.DeleteSelectedCommand.ExecuteAsync(null));
+            menu.ShowAt(FileListView, e.GetPosition(FileListView));
+            return;
+        }
+
         var f = VM.SelectedFile;
         if (f == null) return;
 
-        var menu = new MenuFlyout();
         AddItem(menu, "Download", async () => await VM.DownloadFileCommand.ExecuteAsync(f));
         AddItem(menu, "Share", async () => await VM.ShareFileCommand.ExecuteAsync(f));
         menu.Items.Add(new MenuFlyoutSeparator());

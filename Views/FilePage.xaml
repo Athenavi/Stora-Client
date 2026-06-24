@@ -28,14 +28,18 @@
             </Grid.ColumnDefinitions>
             <Button Grid.Column="0" Content="Back" Click="OnBack" Margin="0,0,6,0" MinWidth="48" />
             <Button Grid.Column="1" Content="Upload" Click="OnUpload" Margin="0,0,6,0" />
-            <Button Grid.Column="2" Content="Share" Click="OnShare" Margin="0,0,6,0" />
-            <Button Grid.Column="3" Content="Copy" Click="OnCopy" Margin="0,0,6,0" />
-            <Button Grid.Column="4" Content="Cut" Click="OnCut" Margin="0,0,6,0" />
-            <Button Grid.Column="5" Content="Paste" Click="OnPaste" Margin="0,0,6,0"
+            <Button Grid.Column="2" Content="Share" Click="OnShare" Margin="0,0,4,0" MinWidth="36" FontSize="12" />
+            <Button Grid.Column="3" Content="Copy" Click="OnCopy" Margin="0,0,4,0" MinWidth="36" FontSize="12" />
+            <Button Grid.Column="4" Content="Cut" Click="OnCut" Margin="0,0,4,0" MinWidth="36" FontSize="12" />
+            <Button Grid.Column="5" Content="Paste" Click="OnPaste" Margin="0,0,4,0" MinWidth="36" FontSize="12"
                     IsEnabled="{x:Bind VM.HasClipboard, Mode=OneWay}" />
-            <TextBlock Grid.Column="6" Text="{x:Bind VM.CurrPath, Mode=OneWay}" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="14" />
-            <TextBlock Grid.Column="7" Text="{x:Bind VM.ClipboardInfo, Mode=OneWay}" VerticalAlignment="Center" Opacity="0.6" Margin="0,0,8,0" />
-            <TextBlock Grid.Column="8" Text="{x:Bind VM.Username, Mode=OneWay}" VerticalAlignment="Center" Opacity="0.6" />
+            <Button Grid.Column="6" Content="Del" Click="OnBatchDelete" Margin="0,0,4,0" MinWidth="36" FontSize="12" />
+            <TextBlock Grid.Column="7" Text="{x:Bind VM.CurrPath, Mode=OneWay}" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="14" />
+            <StackPanel Grid.Column="8" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
+                <TextBlock Text="{x:Bind VM.SelectedCount, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource SystemAccentColor}" FontWeight="Bold" />
+                <TextBlock Text="selected" VerticalAlignment="Center" Opacity="0.6" />
+                <Button Content="Clear" Click="OnClearSelection" MinWidth="40" Height="28" FontSize="11" />
+            </StackPanel>
         </Grid>
 
         <Grid Grid.Row="1" Background="#1B5E20" Padding="8" Visibility="{x:Bind VM.ShowUploadPanel, Mode=OneWay}">
@@ -51,7 +55,7 @@
                   ItemsSource="{x:Bind VM.Files, Mode=OneWay}"
                   AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver"
                   DoubleTapped="OnDoubleTap" RightTapped="OnRightTap"
-                  SelectionMode="Single">
+                  SelectionMode="Multiple">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:FileItem">
                     <Grid Padding="8,4" ColumnSpacing="8">

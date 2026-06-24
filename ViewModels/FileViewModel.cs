@@ -29,6 +29,8 @@ public partial class FileViewModel : ObservableObject
     [ObservableProperty] private bool _isLoading, _loadingMore;
     [ObservableProperty] private string _status = "Ready";
     [ObservableProperty] private FileItem? _selectedFile;
+    [ObservableProperty] private int _selectedCount;
+    public ObservableCollection<FileItem> SelectedFiles { get; } = new();
     [ObservableProperty] private bool _showUploadPanel;
     [ObservableProperty] private double _uploadProgress;
     [ObservableProperty] private string _uploadStatus = "";
@@ -125,8 +127,8 @@ public partial class FileViewModel : ObservableObject
     [RelayCommand]
     public void CopyFiles()
     {
-        if (SelectedFile == null) { _status = "Select a file first"; return; }
-        _clipboardFileIds = new List<long> { SelectedFile.Id };
+        if (SelectedFiles.Count == 0) { _status = "Select files first"; return; }
+        _clipboardFileIds = SelectedFiles.Select(f => f.Id).ToList();
         _clipboardAction = "copy";
         HasClipboard = true;
         ClipboardInfo = $"{_clipboardFileIds.Count} file(s) copied";
@@ -136,8 +138,8 @@ public partial class FileViewModel : ObservableObject
     [RelayCommand]
     public void CutFiles()
     {
-        if (SelectedFile == null) { _status = "Select a file first"; return; }
-        _clipboardFileIds = new List<long> { SelectedFile.Id };
+        if (SelectedFiles.Count == 0) { _status = "Select files first"; return; }
+        _clipboardFileIds = SelectedFiles.Select(f => f.Id).ToList();
         _clipboardAction = "move";
         HasClipboard = true;
         ClipboardInfo = $"{_clipboardFileIds.Count} file(s) cut";
@@ -163,12 +165,58 @@ public partial class FileViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void ClearSelection()
+    {
+        SelectedFiles.Clear(); SelectedCount = 0;
+        _status = "Selection cleared";
+    }
+
+    [RelayCommand]
     public void ClearClipboard()
     {
         _clipboardFileIds.Clear();
         HasClipboard = false;
         ClipboardInfo = "";
         _status = "Clipboard cleared";
+    }
+
+    [RelayCommand]
+    public async Task DeleteSelectedAsync()
+    {
+        if (SelectedFiles.Count == 0) { _status = "Select files first"; return; }
+        var names = string.Join(", ", SelectedFiles.Take(3).Select(f => f.Name));
+        if (SelectedFiles.Count > 3) names += $" and {SelectedFiles.Count - 3} more";
+        var confirm = new ContentDialog
+        {
+            Title = "Delete files?",
+            Content = $"Delete {SelectedFiles.Count} file(s): {names}?",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            XamlRoot = App.MainAppWindow.Content.XamlRoot
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        foreach (var f in SelectedFiles.ToList())
+            try { await _api.DeleteFileAsync(f.Id.ToString()); Files.Remove(f); } catch { }
+        SelectedFiles.Clear(); SelectedCount = 0;
+        _status = "Deleted successfully";
+    }
+
+    [RelayCommand]
+    public async Task ShareSelectedAsync()
+    {
+        if (SelectedFiles.Count == 0) { _status = "Select files first"; return; }
+        foreach (var f in SelectedFiles)
+        {
+            try
+            {
+                var share = await _api.CreateShareAsync(f.Id);
+                var pkg = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+                pkg.SetText(share.ShareUrl);
+                Clipboard.SetContent(pkg);
+            }
+            catch { }
+        }
+        _status = $"Shared {SelectedFiles.Count} file(s)";
     }
 
     [RelayCommand]
