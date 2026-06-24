@@ -107,7 +107,10 @@ public class StoraApiClient
     /// </summary>
     public async Task<FileItem> CreateFolderByPathAsync(string path)
     {
-        var body = new { path };
+        var segs = path.Trim(new char[] { '/' }).Split('/');
+        var name = segs[segs.Length - 1];
+        var parentPath = segs.Length > 1 ? string.Join("/", segs[0..^1]) : "";
+        var body = new { name, parent_path = parentPath };
         var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/folders/by-path", body, JsonOpts);
         r.EnsureSuccessStatusCode();
         var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
@@ -182,6 +185,16 @@ public class StoraApiClient
         return await response.Content.ReadAsStreamAsync();
     }
 
+    public async Task<FileItem> CreateFolderAsync(string name, string? parentId = null)
+    {
+        object? pid = null;
+        if (long.TryParse(parentId, out var n)) pid = n;
+        var body = new { name, parent_id = pid };
+        var response = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/folders", body, JsonOpts);
+        response.EnsureSuccessStatusCode();
+        var w = await response.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("创建文件夹失败");
+    }
     public async Task DeleteFileAsync(string fileId)
     {
         var response = await _httpClient.DeleteAsync($"{BaseUrl}/api/v2/files/{fileId}");
