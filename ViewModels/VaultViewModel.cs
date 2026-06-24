@@ -71,8 +71,7 @@ public partial class VaultViewModel : ObservableObject
         _currentVault = v;
         VaultName = v.Name;
         VaultPwd = "";
-        ViewState = "unlock";
-            OnViewStateChanged();
+        _viewState = "unlock"; OnPropertyChanged(nameof(ViewState)); OnPropertyChanged(nameof(IsListView)); OnPropertyChanged(nameof(IsUnlockView)); OnPropertyChanged(nameof(IsFilesView));
     }
 
     [RelayCommand]
@@ -83,8 +82,7 @@ public partial class VaultViewModel : ObservableObject
         {
             IsLoading = true;
             _currentVaultToken = await _api.VerifyVaultPasswordAsync(_currentVault.Id, VaultPwd);
-            ViewState = "files";
-            OnViewStateChanged();
+            _viewState = "files"; OnPropertyChanged(nameof(ViewState)); OnPropertyChanged(nameof(IsListView)); OnPropertyChanged(nameof(IsUnlockView)); OnPropertyChanged(nameof(IsFilesView));
             await LoadFilesAsync();
         }
         catch (Exception ex) { _status = $"Unlock failed: {ex.Message}"; }
@@ -110,8 +108,7 @@ public partial class VaultViewModel : ObservableObject
         _currentVaultToken = null;
         _currentVault = null;
         VaultFiles.Clear();
-        ViewState = "list";
-            OnViewStateChanged();
+        _viewState = "list"; OnPropertyChanged(nameof(ViewState)); OnPropertyChanged(nameof(IsListView)); OnPropertyChanged(nameof(IsUnlockView)); OnPropertyChanged(nameof(IsFilesView));
         _status = "Locked";
     }
 
@@ -121,8 +118,7 @@ public partial class VaultViewModel : ObservableObject
         _currentVaultToken = null;
         _currentVault = null;
         VaultFiles.Clear();
-        ViewState = "list";
-            OnViewStateChanged();
+        _viewState = "list"; OnPropertyChanged(nameof(ViewState)); OnPropertyChanged(nameof(IsListView)); OnPropertyChanged(nameof(IsUnlockView)); OnPropertyChanged(nameof(IsFilesView));
     }
 
     [RelayCommand]
