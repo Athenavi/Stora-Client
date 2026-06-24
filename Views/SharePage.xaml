@@ -5,31 +5,50 @@
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
       mc:Ignorable="d">
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="44" />
             <RowDefinition Height="*" />
             <RowDefinition Height="32" />
         </Grid.RowDefinitions>
-        <TextBlock Grid.Row="0" Text="🔗 我的分享" FontSize="18" FontWeight="Bold" Padding="12,8" />
-        <ListView x:Name="ShareList" Grid.Row="1" ItemsSource="{x:Bind VM.Shares, Mode=OneWay}" RightTapped="OnRightTap">
+
+        <Grid Grid.Row="0" Padding="8,6" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Content="Refresh" Click="OnRefresh" MinWidth="60" />
+            <TextBlock Grid.Column="1" Text="My Shares" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" Margin="12,0,0,0" />
+            <TextBlock Grid.Column="2" Text="{x:Bind VM.Status, Mode=OneWay}" VerticalAlignment="Center" Opacity="0.6" Margin="0,0,8,0" />
+        </Grid>
+
+        <ListView x:Name="ShareList" Grid.Row="1" ItemsSource="{x:Bind VM.Shares, Mode=OneWay}"
+                  RightTapped="OnRightTap" DoubleTapped="OnCopyLink"
+                  SelectionMode="Single">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:ShareItem">
                     <Grid Padding="8,4" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="28" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="100" />
-                            <ColumnDefinition Width="60" />
+                            <ColumnDefinition Width="80" />
+                            <ColumnDefinition Width="120" />
+                            <ColumnDefinition Width="50" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="{x:Bind FileName}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="1" Text="{x:Bind CreatedAt}" Opacity="0.6" FontSize="12" />
-                        <TextBlock Grid.Column="2" Text="{x:Bind DownloadCount}" Opacity="0.6" FontSize="12" />
+                        <TextBlock Grid.Column="0" Text="🔗" FontSize="16" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{x:Bind FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{x:Bind Permission}" VerticalAlignment="Center" Opacity="0.6" FontSize="12" />
+                        <TextBlock Grid.Column="3" Text="{x:Bind CreatedAt}" VerticalAlignment="Center" Opacity="0.6" FontSize="12" />
+                        <TextBlock Grid.Column="4" Text="{x:Bind DownloadCount}" VerticalAlignment="Center" Opacity="0.6" FontSize="12" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+
         <Grid Grid.Row="2" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
-            <TextBlock Text="{x:Bind VM.Status, Mode=OneWay}" Padding="8,4" FontSize="12" Opacity="0.6" />
+            <TextBlock Padding="8,4" FontSize="12" Opacity="0.6" Text="Right-click for options | Double-click to copy link" />
         </Grid>
     </Grid>
 </Page>
