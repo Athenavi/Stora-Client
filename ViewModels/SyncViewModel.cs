@@ -16,24 +16,25 @@ public partial class SyncViewModel : ObservableObject
 {
     private readonly SyncService _sync;
     [ObservableProperty] private bool _isRunning;
-    [ObservableProperty] private string _status = "未配置";
+    [ObservableProperty] private string _status = "Not configured";
     [ObservableProperty] private string _localPath = "";
     [ObservableProperty] private int _intervalIndex;
     [ObservableProperty] private int _conflictIndex;
-    [ObservableProperty] private int _namingIndex;
     [ObservableProperty] private bool _keepVersions = true;
     [ObservableProperty] private int _maxVersions = 10;
     [ObservableProperty] private string _whitelistText = "";
     [ObservableProperty] private string _blacklistText = "*.tmp,*.temp,~$*,Thumbs.db";
     [ObservableProperty] private bool _autoStart;
-    [ObservableProperty] private string _buttonText = "开始同步";
+    [ObservableProperty] private string _buttonText = "Start Sync";
 
     public int SyncedCount { get; private set; }
     public int TotalCount { get; private set; }
-    public int ConflictCount { get; private set; }
+    public bool HasFiles => TotalCount > 0;
+    public event Action<string>? FileFlashRequested;
+
     public ObservableCollection<SyncFileState> Files { get; } = new();
-    public string[] IntervalOptions => new[] { "5 分钟", "10 分钟", "30 分钟" };
-    public string[] ConflictOptions => new[] { "本地优先", "云端优先", "手动处理" };
+    public string[] IntervalOptions => new[] { "5 min", "10 min", "30 min" };
+    public string[] ConflictOptions => new[] { "Local first", "Cloud first", "Manual" };
 
     public SyncViewModel(SyncService sync)
     {
@@ -80,7 +81,6 @@ public partial class SyncViewModel : ObservableObject
             LocalPath = _localPath,
             IntervalSeconds = _intervalIndex >= 0 ? new[] { 300, 600, 1800 }[_intervalIndex] : 300,
             ConflictMode = _conflictIndex switch { 1 => "cloud", 2 => "manual", _ => "local" },
-            NamingMode = "version",
             KeepVersions = _keepVersions,
             MaxVersions = _maxVersions,
             AutoStart = _autoStart,
@@ -97,23 +97,28 @@ public partial class SyncViewModel : ObservableObject
 
     private void OnFileStatusChanged(SyncFileState file)
     {
-        App.MainAppWindow.DispatcherQueue.TryEnqueue(() => RefreshFileList());
+        App.MainAppWindow.DispatcherQueue.TryEnqueue(() =>
+        {
+            RefreshFileList();
+            if (file.Status == "syncing")
+                FileFlashRequested?.Invoke(file.FileName);
+        });
     }
 
     private void UpdateStatus()
     {
         IsRunning = _sync.IsRunning;
-        ButtonText = _sync.IsRunning ? "停止同步" : "开始同步";
-        if (!_sync.IsConfigured) Status = "请先选择同步文件夹";
-        else if (_sync.IsRunning) Status = "同步中...";
-        else Status = $"已暂停 | {_sync.Store.Files.Count} 个文件";
+        ButtonText = _sync.IsRunning ? "Stop Sync" : "Start Sync";
+        if (!_sync.IsConfigured) Status = "Select sync folder first";
+        else if (_sync.IsRunning) Status = "Syncing...";
+        else Status = $"Paused | {_sync.Store.Files.Count} files";
     }
 
     private void RefreshFileList()
     {
-        Files.Clear(); SyncedCount = 0; ConflictCount = 0;
-        foreach (var f in _sync.Store.Files) { Files.Add(f); if (f.Status == "synced") SyncedCount++; if (f.Status == "conflict" || f.Status == "rename_conflict") ConflictCount++; }
+        Files.Clear(); SyncedCount = 0;
+        foreach (var f in _sync.Store.Files) { Files.Add(f); if (f.Status == "synced") SyncedCount++; }
         TotalCount = Files.Count;
-        OnPropertyChanged(nameof(SyncedCount)); OnPropertyChanged(nameof(TotalCount)); OnPropertyChanged(nameof(ConflictCount));
+        OnPropertyChanged(nameof(SyncedCount)); OnPropertyChanged(nameof(TotalCount)); OnPropertyChanged(nameof(HasFiles));
     }
 }
