@@ -28,7 +28,31 @@ public sealed partial class FilePage : Page
             await VM.InitAsync();
             AttachScroll();
             FileListView.SelectionChanged += OnSelectionChanged;
+            await InitWebViewAuthAsync();
         };
+    }
+
+    private async Task InitWebViewAuthAsync()
+    {
+        try
+        {
+            await PreviewWebView.EnsureCoreWebView2Async();
+            var api = App.Services.GetRequiredService<Services.StoraApiClient>();
+            // Build the auth token from the API client's default headers
+            var authHeader = api.GetAuthHeader();
+            if (authHeader != null)
+            {
+                PreviewWebView.CoreWebView2.WebResourceRequested += (s, args) =>
+                {
+                    if (args.Request.Uri.Contains("localhost:9421"))
+                    {
+                        args.Request.Headers.SetHeader("Authorization", authHeader);
+                    }
+                };
+                PreviewWebView.CoreWebView2.AddWebResourceRequestedFilter("*", Microsoft.Web.WebView2.Core.CoreWebView2WebResourceContext.All);
+            }
+        }
+        catch { }
     }
 
     private void AttachScroll()

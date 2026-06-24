@@ -45,6 +45,11 @@ public class StoraApiClient
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
     }
 
+    public string? GetAuthHeader()
+    {
+        return _httpClient.DefaultRequestHeaders.Authorization?.ToString();
+    }
+
     public void ClearTokens()
     {
         _accessToken = null; _refreshToken = null;
