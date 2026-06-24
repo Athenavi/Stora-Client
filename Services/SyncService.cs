@@ -416,20 +416,43 @@ public class SyncService
             file.Direction = "upload";
             FileStatusChanged?.Invoke(file);
 
-            // 确保父文件夹存在
             var parentId = await EnsureParentFolderAsync(file.LocalPath);
-
-            using var s = File.OpenRead(fullPath);
+            var fileLen = new FileInfo(fullPath).Length;
+            var parentFolder = parentId > 0 ? parentId.ToString() : _store.Config.CloudFolderId;
 
             if (file.CloudId != null)
             {
-                // 已有云端 ID → 更新内容（后端自动创建版本快照 + 维护指纹引用计数）
+                // 已有 CloudId → 更新内容（后端自动创建版本快照）
+                using var s = File.OpenRead(fullPath);
                 await _api.UpdateFileContentAsync(file.CloudId.Value, s, file.FileName);
+            }
+            else if (fileLen > 10 * 1024 * 1024)
+            {
+                // 大文件(>10MB) → 分片上传
+                var uploadId = await _api.InitChunkUploadAsync(file.FileName, fileLen, parentFolder);
+                const int cs = 5 * 1024 * 1024;
+                var total = (int)Math.Ceiling((double)fileLen / cs);
+                using var stream = File.OpenRead(fullPath);
+                var buf = new byte[cs];
+
+                for (int i = 0; i < total; i++)
+                {
+                    if (!_isRunning) { file.Status = "pending"; FileStatusChanged?.Invoke(file); return; }
+                    var read = (int)Math.Min(cs, fileLen - i * cs);
+                    if (read < cs) buf = new byte[read];
+                    await stream.ReadAsync(buf, 0, read);
+                    await _api.UploadChunkAsync(uploadId, i, buf);
+                    file.Progress = (int)(100.0 * (i + 1) / total);
+                    FileStatusChanged?.Invoke(file);
+                }
+
+                file.CloudId = await _api.CompleteChunkUploadAsync(uploadId);
             }
             else
             {
-                // 新文件 → 创建（上传到正确的父文件夹）
-                var u = await _api.UploadFileAsync(s, file.FileName, parentId > 0 ? parentId.ToString() : _store.Config.CloudFolderId);
+                // 小文件 → 直接上传
+                using var s = File.OpenRead(fullPath);
+                var u = await _api.UploadFileAsync(s, file.FileName, parentFolder);
                 file.CloudId = u.Id;
             }
 
@@ -445,9 +468,6 @@ public class SyncService
             FileStatusChanged?.Invoke(file);
         }
     }
-
-    // ── 下载 ──
-
     private async Task DownloadFileAsync(SyncFileState file)
     {
         if (file.CloudId == null) return;
