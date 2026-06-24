@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using StoraDesktop.Models;
+using StoraDesktop.Services;
 using StoraDesktop.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -13,11 +14,13 @@ namespace StoraDesktop.Views;
 public sealed partial class SyncPage : Page
 {
     public SyncViewModel VM { get; }
+    private readonly SyncService _syncService;
 
     public SyncPage(SyncViewModel vm)
     {
         this.InitializeComponent();
         VM = vm;
+        _syncService = (App.Services.GetService(typeof(SyncService)) as SyncService)!;
         VM.FileFlashRequested += OnFileFlash;
     }
 
@@ -31,17 +34,34 @@ public sealed partial class SyncPage : Page
                 {
                     if (SyncList.ContainerFromItem(item) is ListViewItem container)
                     {
-                        var green = new SolidColorBrush(Windows.UI.Color.FromArgb(40, 34, 187, 102));
-                        container.Background = green;
-                        _ = Task.Delay(400).ContinueWith(_ =>
-                        {
-                            DispatcherQueue.TryEnqueue(() => container.Background = null);
-                        });
+                        container.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(40, 34, 187, 102));
+                        _ = Task.Delay(400).ContinueWith(_ => DispatcherQueue.TryEnqueue(() => container.Background = null));
                     }
                     break;
                 }
             }
         });
+    }
+
+    private async void OnFileRightTap(object sender, RightTappedRoutedEventArgs e)
+    {
+        var file = (e.OriginalSource as FrameworkElement)?.DataContext as SyncFileState;
+        if (file == null) return;
+
+        var menu = new MenuFlyout();
+        var removeItem = new MenuFlyoutItem { Text = "Remove ghost from list" };
+        removeItem.Click += (s, args) => _syncService.ClearGhostFiles();
+        menu.Items.Add(removeItem);
+
+        if (!string.IsNullOrEmpty(file.LocalPath))
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            var locItem = new MenuFlyoutItem { Text = "Show in folder" };
+            locItem.Click += (s, args) => System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{System.IO.Path.Combine(_syncService.Store.Config.LocalPath, file.LocalPath)}\"");
+            menu.Items.Add(locItem);
+        }
+
+        menu.ShowAt(SyncList, e.GetPosition(SyncList));
     }
 
     private async void OnFileDoubleTap(object sender, DoubleTappedRoutedEventArgs e)

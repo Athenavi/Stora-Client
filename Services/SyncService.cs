@@ -109,8 +109,6 @@ public class SyncService
         return true;
     }
 
-    // ── Phase 2: 本地块存储 + 清单 ──
-
     private void StoreLocalBlocks(string fullPath, string relPath)
     {
         try
@@ -147,8 +145,7 @@ public class SyncService
         {
             var doc = JsonDocument.Parse(File.ReadAllText(manPath));
             return doc.RootElement.GetProperty("blocks").EnumerateArray()
-                .Select(b => b.GetProperty("hash").GetString())
-                .Where(h => h != null).ToHashSet()!;
+                .Select(b => b.GetProperty("hash").GetString()).Where(h => h != null).ToHashSet()!;
         }
         catch { return new HashSet<string>(); }
     }
@@ -219,8 +216,6 @@ public class SyncService
         return pid;
     }
 
-    // ── Phase 2: 全量同步（块对比 + 只传变化块） ──
-
     private async Task FullSyncAsync()
     {
         if (!IsConfigured || _index == null) return;
@@ -269,33 +264,24 @@ public class SyncService
                 _index.RemoveFile(path);
                 changes.Add((path, hash, "deleted"));
                 _index.AppendJournal(path, "deleted", hash);
+                _store.Files.RemoveAll(f => f.LocalPath == path);
                 if (cloudId > 0) { try { await _api.DeleteFileAsync(cloudId.ToString()); } catch { } }
             }
         }
 
-        if (changes.Count > 0)
-        {
-            var msg = $"{changes.Count} file(s): " + string.Join(", ", changes.Select(c => $"{c.action}({c.path})").Take(3));
-            _index.CreateSnapshot(msg, changes);
-        }
+        if (changes.Count > 0) _index.CreateSnapshot(string.Join(", ", changes.Select(c => $"{c.action}:{c.path}").Take(5)), changes);
 
         SaveState();
 
-        // Phase 2: 块级上传——只传变化块
         var pending = _index.GetPendingFiles();
         foreach (var (path, hash, cloudId) in pending)
         {
             var fullPath = Path.Combine(_store.Config.LocalPath, path);
-            if (File.Exists(fullPath))
-            {
-                await UploadFileAsync(path, hash, cloudId > 0 ? cloudId : null);
-            }
+            if (File.Exists(fullPath)) await UploadFileAsync(path, hash, cloudId > 0 ? cloudId : null);
         }
 
         _store.LastSync = DateTime.UtcNow; SaveState(); StateChanged?.Invoke();
     }
-
-    // ── Phase 2: 块级上传（对比本地/云端清单，只传缺失块） ──
 
     private async Task UploadFileAsync(string relPath, string hash, long? existingCloudId)
     {
@@ -306,38 +292,28 @@ public class SyncService
         {
             StoreLocalBlocks(fullPath, relPath);
             var fileHash = ComputeHash(fullPath);
-
-            // 1. 获取本地块清单
             var localBlocks = GetLocalBlockHashes(fileHash);
             if (localBlocks.Count == 0) return;
 
-            // 2. 获取云端块清单（已有 CloudId）
             var cloudBlocks = existingCloudId != null && existingCloudId > 0
-                ? await GetCloudBlockHashes(existingCloudId.Value)
-                : new HashSet<string>();
+                ? await GetCloudBlockHashes(existingCloudId.Value) : new HashSet<string>();
 
-            // 3. 只传本地有、云端没有的块
             var toUpload = localBlocks.Where(b => !cloudBlocks.Contains(b)).ToList();
             foreach (var blockHash in toUpload)
             {
                 var sub = Path.Combine(_index.StoraPath, "Objects", blockHash.Substring(0, 2));
                 var bp = Path.Combine(sub, blockHash.Substring(2));
-                if (File.Exists(bp))
-                {
-                    await _api.UploadBlockAsync(File.ReadAllBytes(bp));
-                }
+                if (File.Exists(bp)) await _api.UploadBlockAsync(File.ReadAllBytes(bp));
             }
 
             var parentId = await EnsureParentFolderAsync(relPath);
             var parent = parentId > 0 ? parentId.ToString() : _store.Config.CloudFolderId;
             var len = new FileInfo(fullPath).Length;
 
-            // 4. 上传完整文件记录
             long cloudId;
             if (existingCloudId != null && existingCloudId > 0)
             {
-                using var s = File.OpenRead(fullPath);
-                await _api.UpdateFileContentAsync(existingCloudId.Value, s, Path.GetFileName(relPath));
+                using var s = File.OpenRead(fullPath); await _api.UpdateFileContentAsync(existingCloudId.Value, s, Path.GetFileName(relPath));
                 cloudId = existingCloudId.Value;
             }
             else if (len > 10 * 1024 * 1024)
@@ -351,28 +327,20 @@ public class SyncService
                 {
                     if (!_isRunning) return;
                     var r = (int)Math.Min(cs, len - i * cs); if (r < cs) buf = new byte[r];
-                    await stream.ReadAsync(buf, 0, r);
-                    await _api.UploadChunkAsync(uid, i, buf);
+                    await stream.ReadAsync(buf, 0, r); await _api.UploadChunkAsync(uid, i, buf);
                 }
                 cloudId = await _api.CompleteChunkUploadAsync(uid);
             }
             else
             {
-                using var s = File.OpenRead(fullPath);
-                var u = await _api.UploadFileAsync(s, Path.GetFileName(relPath), parent);
-                cloudId = u.Id;
+                using var s = File.OpenRead(fullPath); var u = await _api.UploadFileAsync(s, Path.GetFileName(relPath), parent); cloudId = u.Id;
             }
 
             _index.MarkSynced(relPath, cloudId, hash);
             _index.AppendJournal(relPath, "synced", hash, len);
         }
-        catch (Exception ex)
-        {
-            _index.AppendJournal(relPath, "error", ex.Message);
-        }
+        catch (Exception ex) { _index.AppendJournal(relPath, "error", ex.Message); }
     }
-
-    // ── 轮询云端 ──
 
     private async Task PollCloudAsync()
     {
@@ -385,15 +353,8 @@ public class SyncService
                 if (_index.GetCloudId(c.Name) != null) continue;
                 var fullPath = Path.Combine(_store.Config.LocalPath, c.Name);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-
-                // Phase 2: 块级下载——只拉缺失块
-                var cloudBlocks = await GetCloudBlockHashes(c.Id);
-                var manifestData = new List<(int idx, long offset, int size)>();
-                var fileHash = c.Name; // placeholder
-
                 using var stream = await _api.DownloadFileAsync(c.Id.ToString());
                 using var fs = File.Create(fullPath); await stream.CopyToAsync(fs);
-
                 var hash = ComputeHash(fullPath);
                 _index.UpsertFile(c.Name, c.Name, hash, c.Size ?? 0, DateTime.UtcNow.ToString("O"));
                 _index.MarkSynced(c.Name, c.Id, hash);
@@ -404,8 +365,6 @@ public class SyncService
         }
         catch { }
     }
-
-    // ── 本地事件处理 ──
 
     private async Task OnLocalChangeAsync(string fullPath)
     {
@@ -421,8 +380,7 @@ public class SyncService
             _index.AppendJournal(rel, "modified", hash, info.Length);
             var cloudId = _index.GetCloudId(rel);
             await UploadFileAsync(rel, hash, cloudId);
-            var changes = new List<(string, string, string)> { (rel, hash, "modified") };
-            _index.CreateSnapshot($"modified: {Path.GetFileName(rel)}", changes);
+            _index.CreateSnapshot($"modified: {Path.GetFileName(rel)}", new List<(string, string, string)> { (rel, hash, "modified") });
         }
         StateChanged?.Invoke();
     }
@@ -434,9 +392,9 @@ public class SyncService
         var cloudId = _index.GetCloudId(rel);
         _index.AppendJournal(rel, "deleted", _index.GetHash(rel) ?? "");
         _index.RemoveFile(rel);
+        _store.Files.RemoveAll(f => f.LocalPath == rel);
         if (cloudId != null && cloudId > 0) { try { await _api.DeleteFileAsync(cloudId.ToString()); } catch { } }
-        var changes = new List<(string, string, string)> { (rel, "", "deleted") };
-        _index.CreateSnapshot($"deleted: {Path.GetFileName(rel)}", changes);
+        _index.CreateSnapshot($"deleted: {Path.GetFileName(rel)}", new List<(string, string, string)> { (rel, "", "deleted") });
         StateChanged?.Invoke();
     }
 
@@ -449,8 +407,26 @@ public class SyncService
         _index.RemoveFile(oldRel);
         _index.UpsertFile(newRel, Path.GetFileName(newRel), _index.GetHash(oldRel) ?? "", new FileInfo(newPath).Length, DateTime.UtcNow.ToString("O"));
         if (cloudId != null) _index.MarkSynced(newRel, cloudId.Value, _index.GetHash(newRel) ?? "");
-        var changes = new List<(string, string, string)> { (oldRel, "", "deleted"), (newRel, _index.GetHash(newRel) ?? "", "created") };
-        _index.CreateSnapshot($"renamed: {Path.GetFileName(oldPath)} -> {Path.GetFileName(newPath)}", changes);
+        _index.CreateSnapshot($"renamed: {Path.GetFileName(oldPath)} -> {Path.GetFileName(newPath)}", new List<(string, string, string)> { (oldRel, "", "deleted"), (newRel, _index.GetHash(newRel) ?? "", "created") });
+    }
+
+    /// <summary>
+    /// 移除 _store.Files 中实际磁盘上不存在的幽灵文件
+    /// </summary>
+    public void ClearGhostFiles()
+    {
+        if (string.IsNullOrEmpty(_store.Config.LocalPath)) return;
+        var ghosts = _store.Files
+            .Where(f => !File.Exists(Path.Combine(_store.Config.LocalPath, f.LocalPath)))
+            .ToList();
+        foreach (var g in ghosts)
+        {
+            _store.Files.Remove(g);
+            _index?.RemoveFile(g.LocalPath);
+            _index?.AppendJournal(g.LocalPath, "ghost_removed", g.LocalHash ?? "");
+        }
+        SaveState();
+        StateChanged?.Invoke();
     }
 
     public void SaveStatePublic() => SaveState();
