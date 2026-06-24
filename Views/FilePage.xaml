@@ -82,6 +82,27 @@
             <ProgressRing IsActive="{x:Bind VM.IsLoading, Mode=OneWay}" Width="18" Height="18" HorizontalAlignment="Center" />
         </Grid>
 
+        <!-- Preview Overlay -->
+        <Grid Grid.RowSpan="4" x:Name="PreviewOverlay" Visibility="Collapsed" Background="#CC000000"
+              PointerPressed="OnPreviewBgClick">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="44" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}" Padding="8,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="PreviewTitle" VerticalAlignment="Center" FontSize="16" FontWeight="Bold" />
+                <Button Grid.Column="1" Content="Open in Browser" Click="OnOpenInBrowser" Margin="0,0,8,0" />
+                <Button Grid.Column="2" Content="Close" Click="OnClosePreview" />
+            </Grid>
+            <Grid Grid.Row="1">
+                <WebView2 x:Name="PreviewWebView" />
+            </Grid>
+        </Grid>
         <Grid Grid.Row="3" Background="{ThemeResource SystemControlBackgroundChromeMediumBrush}">
             <TextBlock Text="{x:Bind VM.Status, Mode=OneWay}" Padding="8,4" FontSize="12" Opacity="0.6" />
         </Grid>

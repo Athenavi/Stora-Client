@@ -283,14 +283,19 @@ public class StoraApiClient
 
     #region Vault
 
-    public async Task<List<VaultItem>> GetVaultsAsync() { return await GetListAsync<VaultItem>("/api/v2/vaults"); }
+    public async Task<List<VaultItem>> GetVaultsAsync()
+    {
+        var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/vaults"); r.EnsureSuccessStatusCode();
+        var list = await r.Content.ReadFromJsonAsync<List<VaultItem>>(JsonOpts);
+        return list ?? new List<VaultItem>();
+    }
 
     public async Task<VaultItem> CreateVaultAsync(string name, string password)
     {
         var body = new { name, password };
         var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/vaults", body, JsonOpts); r.EnsureSuccessStatusCode();
-        var w = await r.Content.ReadFromJsonAsync<ApiResponse<VaultItem>>(JsonOpts);
-        return w?.Data ?? throw new Exception("create vault failed");
+        var item = await r.Content.ReadFromJsonAsync<VaultItem>(JsonOpts);
+        return item ?? throw new Exception("create vault failed");
     }
 
     public async Task<string> VerifyVaultPasswordAsync(long vaultId, string password)
@@ -306,8 +311,8 @@ public class StoraApiClient
     public async Task<List<VaultFileItem>> GetVaultItemsAsync(long vaultId, string vaultToken)
     {
         var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/vaults/{vaultId}/items?vault_token={vaultToken}"); r.EnsureSuccessStatusCode();
-        var w = await r.Content.ReadFromJsonAsync<ApiResponse<List<VaultFileItem>>>(JsonOpts);
-        return w?.Data ?? new List<VaultFileItem>();
+        var list = await r.Content.ReadFromJsonAsync<List<VaultFileItem>>(JsonOpts);
+        return list ?? new List<VaultFileItem>();
     }
 
 
@@ -386,7 +391,6 @@ public class StoraApiClient
         var r = await _httpClient.PostAsync($"{BaseUrl}/api/v2/files/{fileId}/versions/{versionId}/restore", null); r.EnsureSuccessStatusCode();
     }
 
-    public async Task<List<VaultItem>> ListVaultsAsync() { return await GetListAsync<VaultItem>("/api/v2/vaults"); }
 
     #endregion
 }

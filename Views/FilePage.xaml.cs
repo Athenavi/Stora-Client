@@ -175,14 +175,29 @@ public sealed partial class FilePage : Page
         menu.ShowAt(FileListView, e.GetPosition(FileListView));
     }
 
-    private static void PreviewFile(FileItem? f)
+    private async void PreviewFile(FileItem? f)
     {
         if (f == null) return;
         var baseUrl = App.Services.GetRequiredService<Services.StoraApiClient>().BaseUrl;
         var url = $"{baseUrl}/api/v2/files/preview/{f.Id}/{Uri.EscapeDataString(f.Name ?? "")}";
-        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        PreviewTitle.Text = $"Preview: {f.Name}";
+        PreviewWebView.Source = new Uri(url);
+        PreviewOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void OnClosePreview(object s, RoutedEventArgs e)
+    {
+        PreviewOverlay.Visibility = Visibility.Collapsed;
+        PreviewWebView.Source = null;
+    }
+
+    private void OnOpenInBrowser(object s, RoutedEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PreviewWebView.Source?.ToString() ?? "") { UseShellExecute = true }); }
         catch { }
     }
+
+    private void OnPreviewBgClick(object s, PointerRoutedEventArgs e) => OnClosePreview(s, new RoutedEventArgs());
 
     private void AddItem(MenuFlyout menu, string text, Func<Task> action)
     {
