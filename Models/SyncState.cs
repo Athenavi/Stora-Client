@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace StoraDesktop.Models;
 
-/// <summary>
-/// 单个文件的历史版本
-/// </summary>
 public class FileVersion
 {
     [JsonPropertyName("id")]
@@ -16,10 +14,10 @@ public class FileVersion
     public int Version { get; set; }
 
     [JsonPropertyName("local_path")]
-    public string LocalPath { get; set; } = "";       // 本地备份路径
+    public string LocalPath { get; set; } = "";
 
     [JsonPropertyName("cloud_version_id")]
-    public string? CloudVersionId { get; set; }        // 后端版本 ID
+    public string? CloudVersionId { get; set; }
 
     [JsonPropertyName("hash")]
     public string Hash { get; set; } = "";
@@ -31,7 +29,7 @@ public class FileVersion
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     [JsonPropertyName("reason")]
-    public string Reason { get; set; } = "sync";       // sync / conflict / manual
+    public string Reason { get; set; } = "sync";
 
     public string SizeDisplay => Size switch
     {
@@ -42,9 +40,6 @@ public class FileVersion
     };
 }
 
-/// <summary>
-/// 单个文件的同步状态
-/// </summary>
 public class SyncFileState
 {
     [JsonPropertyName("id")]
@@ -72,7 +67,7 @@ public class SyncFileState
     public DateTime CloudModified { get; set; }
 
     [JsonPropertyName("status")]
-    public string Status { get; set; } = "pending";    // pending/synced/syncing/conflict/error/rename_conflict
+    public string Status { get; set; } = "pending";
 
     [JsonPropertyName("direction")]
     public string Direction { get; set; } = "";
@@ -89,9 +84,6 @@ public class SyncFileState
     [JsonPropertyName("error")]
     public string? Error { get; set; }
 
-    /// <summary>
-    /// 文件版本历史（旧版本列表）
-    /// </summary>
     [JsonPropertyName("versions")]
     public List<FileVersion> Versions { get; set; } = new();
 
@@ -116,9 +108,6 @@ public class SyncFileState
         _ => $"{Size / (1024.0 * 1024 * 1024):F2} GB"
     };
 
-    /// <summary>
-    /// 在覆盖前备份当前版本
-    /// </summary>
     public FileVersion BackupVersion(string syncRoot, string reason = "sync")
     {
         CurrentVersion++;
@@ -131,72 +120,74 @@ public class SyncFileState
             Reason = reason
         };
         Versions.Add(ver);
+
+        // 复制文件到隐藏的版本备份目录
+        var fullPath = Path.Combine(syncRoot, LocalPath);
+        if (File.Exists(fullPath))
+        {
+            var bakDir = Path.Combine(syncRoot, ".stora-versions");
+            Directory.CreateDirectory(bakDir);
+
+            // 设为隐藏目录
+            if ((File.GetAttributes(bakDir) & FileAttributes.Hidden) != FileAttributes.Hidden)
+                File.SetAttributes(bakDir, FileAttributes.Hidden | FileAttributes.Directory);
+
+            var bakName = $"{FileName}.v{ver.Version}.{DateTime.UtcNow:yyyyMMddHHmmss}";
+            var bakPath = Path.Combine(bakDir, bakName);
+            try { File.Copy(fullPath, bakPath, overwrite: true); ver.LocalPath = bakPath; } catch { }
+        }
+
+        while (Versions.Count > 10)
+        {
+            var old = Versions[0];
+            try { if (!string.IsNullOrEmpty(old.LocalPath) && File.Exists(old.LocalPath)) File.Delete(old.LocalPath); } catch { }
+            Versions.RemoveAt(0);
+        }
+
         return ver;
     }
 }
 
-/// <summary>
-/// 命名冲突记录
-/// </summary>
 public class NamingConflict
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = Guid.NewGuid().ToString();
-
     [JsonPropertyName("local_path")]
     public string LocalPath { get; set; } = "";
-
     [JsonPropertyName("cloud_name")]
     public string CloudName { get; set; } = "";
-
     [JsonPropertyName("resolved_name")]
     public string? ResolvedName { get; set; }
-
     [JsonPropertyName("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
     [JsonPropertyName("resolved")]
     public bool Resolved { get; set; }
-
     [JsonPropertyName("resolution")]
-    public string? Resolution { get; set; }  // rename_local / rename_cloud / skip
+    public string? Resolution { get; set; }
 }
 
-/// <summary>
-/// 同步盘配置
-/// </summary>
 public class SyncConfig
 {
     [JsonPropertyName("local_path")]
     public string LocalPath { get; set; } = "";
-
     [JsonPropertyName("cloud_folder_id")]
     public string? CloudFolderId { get; set; }
-
     [JsonPropertyName("interval_sec")]
     public int IntervalSeconds { get; set; } = 300;
-
     [JsonPropertyName("conflict_mode")]
-    public string ConflictMode { get; set; } = "local"; // local / cloud / manual
-
+    public string ConflictMode { get; set; } = "local";
     [JsonPropertyName("naming_mode")]
-    public string NamingMode { get; set; } = "version"; // version(自动重命名) / overwrite(覆盖) / manual(手动)
-
+    public string NamingMode { get; set; } = "version";
     [JsonPropertyName("keep_versions")]
-    public bool KeepVersions { get; set; } = true;       // 是否保留历史版本
-
+    public bool KeepVersions { get; set; } = true;
     [JsonPropertyName("max_versions")]
-    public int MaxVersions { get; set; } = 10;           // 最大保留版本数
-
+    public int MaxVersions { get; set; } = 10;
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; }
-
     [JsonPropertyName("auto_start")]
     public bool AutoStart { get; set; }
-
     [JsonPropertyName("whitelist")]
     public List<string> Whitelist { get; set; } = new();
-
     [JsonPropertyName("blacklist")]
     public List<string> Blacklist { get; set; } = new()
     {
@@ -204,23 +195,16 @@ public class SyncConfig
     };
 }
 
-/// <summary>
-/// 完整的同步状态（持久化到 JSON）
-/// </summary>
 public class SyncStore
 {
     [JsonPropertyName("config")]
     public SyncConfig Config { get; set; } = new();
-
     [JsonPropertyName("files")]
     public List<SyncFileState> Files { get; set; } = new();
-
     [JsonPropertyName("naming_conflicts")]
     public List<NamingConflict> NamingConflicts { get; set; } = new();
-
     [JsonPropertyName("last_sync")]
     public DateTime LastSync { get; set; }
-
     [JsonPropertyName("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
