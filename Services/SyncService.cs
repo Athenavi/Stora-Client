@@ -209,8 +209,8 @@ public class SyncService
         {
             try
             {
-                var rootFiles = await _api.GetFilesAsync(null, 1, 200);
-                var syncFolder = rootFiles.Items.FirstOrDefault(f => f.IsFolder && f.Name == "Sync");
+                var rootFiles = await _api.ListFolderContentsAsync(null);
+                var syncFolder = rootFiles.FirstOrDefault(f => f.IsFolder && f.Name == "Sync");
                 if (syncFolder != null) { _store.Config.CloudFolderId = syncFolder.Id.ToString(); SaveState(); }
             }
             catch { }
@@ -235,8 +235,8 @@ public class SyncService
                     var segFound = false;
                     try
                     {
-                        var list = await _api.GetFilesAsync(pid > 0 ? pid.ToString() : null, 1, 200);
-                        var match = list.Items.FirstOrDefault(f => f.IsFolder && f.Name == seg);
+                        var list = await _api.ListFolderContentsAsync(pid > 0 ? pid.ToString() : null);
+                        var match = list.FirstOrDefault(f => f.IsFolder && f.Name == seg);
                         if (match != null) { pid = match.Id; segFound = true; }
                     }
                     catch { }
@@ -330,34 +330,48 @@ public class SyncService
         try
         {
             StoreLocalBlocks(fullPath, relPath);
-            var fileHash = ComputeHash(fullPath);
-            var localBlocks = GetLocalBlockHashes(fileHash);
-            if (localBlocks.Count == 0) return;
+            var len = new FileInfo(fullPath).Length;
 
-            var cloudBlocks = existingCloudId != null && existingCloudId > 0
-                ? await GetCloudBlockHashes(existingCloudId.Value) : new HashSet<string>();
+            // Resolve parent folder by walking path segments
+            var fileName = Path.GetFileName(relPath);
+            var dirPart = Path.GetDirectoryName(relPath)?.Replace('\\', '/') ?? "";
+            long pid = long.TryParse(_store.Config.CloudFolderId, out var rootId) ? rootId : 0;
 
-            var toUpload = localBlocks.Where(b => !cloudBlocks.Contains(b)).ToList();
-            foreach (var blockHash in toUpload)
+            if (!string.IsNullOrEmpty(dirPart))
             {
-                var sub = Path.Combine(_index.StoraPath, "Objects", blockHash.Substring(0, 2));
-                var bp = Path.Combine(sub, blockHash.Substring(2));
-                if (File.Exists(bp)) await _api.UploadBlockAsync(File.ReadAllBytes(bp));
+                foreach (var seg in dirPart.Split('/', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    // Find existing folder
+                    try
+                    {
+                        var list = await _api.ListFolderContentsAsync(pid > 0 ? pid.ToString() : null);
+                        var match = list.FirstOrDefault(f => f.IsFolder && f.Name == seg);
+                        if (match != null) { pid = match.Id; continue; }
+                    }
+                    catch { }
+
+                    // Create folder
+                    try { var c = await _api.CreateFolderAsync(seg, pid > 0 ? pid.ToString() : null); pid = c.Id; }
+                    catch
+                    {
+                        // Final fallback
+                        try { var list2 = await _api.ListFolderContentsAsync(pid > 0 ? pid.ToString() : null); var m2 = list2.FirstOrDefault(f => f.IsFolder && f.Name == seg); if (m2 != null) pid = m2.Id; }
+                        catch { }
+                    }
+                }
             }
 
-            var parentId = await EnsureParentFolderAsync(relPath);
-            var parent = parentId > 0 ? parentId.ToString() : _store.Config.CloudFolderId;
-            var len = new FileInfo(fullPath).Length;
+            var targetFolder = pid > 0 ? pid.ToString() : _store.Config.CloudFolderId;
 
             long cloudId;
             if (existingCloudId != null && existingCloudId > 0)
             {
-                using var s = File.OpenRead(fullPath); await _api.UpdateFileContentAsync(existingCloudId.Value, s, Path.GetFileName(relPath));
+                using var s = File.OpenRead(fullPath); await _api.UpdateFileContentAsync(existingCloudId.Value, s, fileName);
                 cloudId = existingCloudId.Value;
             }
             else if (len > 10 * 1024 * 1024)
             {
-                var uid = await _api.InitChunkUploadAsync(Path.GetFileName(relPath), len, parent);
+                var uid = await _api.InitChunkUploadAsync(fileName, len, targetFolder);
                 const int cs = 4 * 1024 * 1024;
                 var total = (int)Math.Ceiling((double)len / cs);
                 using var stream = File.OpenRead(fullPath);
@@ -372,7 +386,7 @@ public class SyncService
             }
             else
             {
-                using var s = File.OpenRead(fullPath); var u = await _api.UploadFileAsync(s, Path.GetFileName(relPath), parent); cloudId = u.Id;
+                using var s = File.OpenRead(fullPath); var u = await _api.UploadFileAsync(s, fileName, targetFolder); cloudId = u.Id;
             }
 
             _index.MarkSynced(relPath, cloudId, hash);

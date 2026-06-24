@@ -103,6 +103,48 @@ public class StoraApiClient
         catch { return false; }
     }
 
+    /// <summary>
+    /// List folder contents - returns BOTH files and folders (backend returns separate arrays)
+    /// </summary>
+    public async Task<List<FileItem>> ListFolderContentsAsync(string? folderId = null)
+    {
+        var url = $"{BaseUrl}/api/v2/files";
+        if (!string.IsNullOrEmpty(folderId)) url += $"?folder_id={folderId}";
+        var r = await _httpClient.GetAsync(url); r.EnsureSuccessStatusCode();
+        var json = await r.Content.ReadAsStringAsync();
+        var doc = System.Text.Json.JsonDocument.Parse(json);
+        var result = new List<FileItem>();
+        // Backend returns { "folders": [...], "files": [...], ... }
+        if (doc.RootElement.TryGetProperty("data", out var data))
+        {
+            if (data.TryGetProperty("folders", out var folders))
+            {
+                foreach (var f in folders.EnumerateArray())
+                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
+            }
+            if (data.TryGetProperty("files", out var files))
+            {
+                foreach (var f in files.EnumerateArray())
+                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
+            }
+        }
+        else
+        {
+            // Direct response (no wrapper)
+            if (doc.RootElement.TryGetProperty("folders", out var folders2))
+            {
+                foreach (var f in folders2.EnumerateArray())
+                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
+            }
+            if (doc.RootElement.TryGetProperty("files", out var files2))
+            {
+                foreach (var f in files2.EnumerateArray())
+                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
+            }
+        }
+        return result;
+    }
+
     public async Task<FileListData> GetFilesAsync(string? folderId = null, int page = 1, int perPage = 50, string? fileType = null, bool? isFavorite = null)
     {
         var url = $"{BaseUrl}/api/v2/files?page={page}&per_page={perPage}";
