@@ -65,13 +65,8 @@ public sealed partial class MainWindow : Window
             navStack.Children.Add(b);
         }
 
-        var logoutBtn = new Button { Content = "🚪", FontSize = 18, Width = 40, Height = 40, Background = null, Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(8) };
-        logoutBtn.Click += async (s, e) => { await App.Services.GetRequiredService<StoraApiClient>().LogoutAsync(); if (MainFrame != null) MainFrame.Content = CreateLoginPage(); };
-        Grid.SetRow(logoutBtn, 2);
-
         sidebar.Children.Add(logo);
         sidebar.Children.Add(navStack);
-        sidebar.Children.Add(logoutBtn);
         Grid.SetColumn(sidebar, 0);
 
         shell.Children.Add(sidebar);
@@ -79,6 +74,11 @@ public sealed partial class MainWindow : Window
         MainFrame.Content = shell;
 
         NavigateTo("files");
+        _tray = new TrayService(this);
+        _tray.ShowWindowRequested += () => DispatcherQueue.TryEnqueue(() => { try { this.AppWindow.Show(true); } catch { } });
+        _tray.LogoutRequested += async () => { await App.Services.GetRequiredService<StoraApiClient>().LogoutAsync(); DispatcherQueue.TryEnqueue(() => { if (MainFrame != null) MainFrame.Content = CreateLoginPage(); }); };
+        _tray.ExitRequested += () => DispatcherQueue.TryEnqueue(() => Application.Current.Exit());
+        try { _tray.Initialize(); } catch { }
     }
 
     private Page CreateLoginPage()
@@ -105,4 +105,5 @@ public sealed partial class MainWindow : Window
     }
 
     private Frame? _contentFrame;
+    private TrayService? _tray;
 }
