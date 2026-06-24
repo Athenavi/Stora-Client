@@ -114,32 +114,25 @@ public class StoraApiClient
         var json = await r.Content.ReadAsStringAsync();
         var doc = System.Text.Json.JsonDocument.Parse(json);
         var result = new List<FileItem>();
-        // Backend returns { "folders": [...], "files": [...], ... }
-        if (doc.RootElement.TryGetProperty("data", out var data))
+
+        // Backend may return { "data": { "folders": [...], "files": [...] } } OR
+        //                    { "folders": [...], "files": [...] }
+        var root = doc.RootElement.TryGetProperty("data", out var data) ? data : doc.RootElement;
+
+        if (root.TryGetProperty("folders", out var folders))
         {
-            if (data.TryGetProperty("folders", out var folders))
+            foreach (var f in folders.EnumerateArray())
             {
-                foreach (var f in folders.EnumerateArray())
-                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
-            }
-            if (data.TryGetProperty("files", out var files))
-            {
-                foreach (var f in files.EnumerateArray())
-                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
+                var item = System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts);
+                if (item != null) { item.IsFolder = true; result.Add(item); }
             }
         }
-        else
+        if (root.TryGetProperty("files", out var files))
         {
-            // Direct response (no wrapper)
-            if (doc.RootElement.TryGetProperty("folders", out var folders2))
+            foreach (var f in files.EnumerateArray())
             {
-                foreach (var f in folders2.EnumerateArray())
-                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
-            }
-            if (doc.RootElement.TryGetProperty("files", out var files2))
-            {
-                foreach (var f in files2.EnumerateArray())
-                    result.Add(System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts)!);
+                var item = System.Text.Json.JsonSerializer.Deserialize<FileItem>(f.GetRawText(), JsonOpts);
+                if (item != null) result.Add(item);
             }
         }
         return result;
