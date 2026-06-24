@@ -200,8 +200,32 @@ public sealed partial class FilePage : Page
 
         if (Array.IndexOf(videoExts, ext) >= 0 || Array.IndexOf(audioExts, ext) >= 0)
         {
-            PreviewMediaPlayer.Source = MediaSource.CreateFromUri(new Uri(downloadUrl));
-            PreviewMediaPlayer.Visibility = Visibility.Visible;
+            // MediaPlayerElement can not send auth headers, download to temp file
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var api = App.Services.GetRequiredService<Services.StoraApiClient>();
+                    var stream = await api.DownloadFileAsync(f.Id.ToString());
+                    var tempFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Stora_" + f.Name);
+                    using (var fs = new System.IO.FileStream(tempFile, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+                    {
+                        await stream.CopyToAsync(fs);
+                    }
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        PreviewMediaPlayer.Source = MediaSource.CreateFromUri(new Uri(tempFile));
+                        PreviewMediaPlayer.Visibility = Visibility.Visible;
+                        PreviewOverlay.Visibility = Visibility.Visible;
+                        PreviewTitle.Text = $"Playing: {f.Name}";
+                    });
+                }
+                catch (Exception ex)
+                {
+                    DispatcherQueue.TryEnqueue(() => PreviewTitle.Text = $"Playback failed: {ex.Message}");
+                }
+            });
+            return;
         }
         else if (Array.IndexOf(imageExts, ext) >= 0)
         {
