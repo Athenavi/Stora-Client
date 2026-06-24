@@ -239,10 +239,12 @@ public class StoraApiClient
     public async Task<string> VerifyVaultPasswordAsync(long vaultId, string password)
     {
         var body = new { password };
-        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/vaults/{vaultId}/verify-password", body, JsonOpts);
+        using var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/vaults/{vaultId}/verify-password", body, JsonOpts);
         r.EnsureSuccessStatusCode();
-        var w = await r.Content.ReadFromJsonAsync<ApiResponse<Dictionary<string, string>>>(JsonOpts);
-        return w?.Data?.GetValueOrDefault("vault_token") ?? throw new Exception("密码错误");
+        // 后端直接返回 {"token":"...", "vault_id":...}
+        var dict = await r.Content.ReadFromJsonAsync<Dictionary<string, string>>(JsonOpts);
+        var token = dict?.GetValueOrDefault("token") ?? dict?.GetValueOrDefault("vault_token");
+        return token ?? throw new Exception("密码错误");
     }
 
     public async Task<List<VaultFileItem>> GetVaultItemsAsync(long vaultId, string vaultToken)
@@ -328,6 +330,7 @@ public class StoraApiClient
 
     #endregion
 }
+
 
 
 
