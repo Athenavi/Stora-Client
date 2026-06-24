@@ -229,7 +229,7 @@ public class SyncService
             foreach (var path in Directory.EnumerateFiles(_store.Config.LocalPath, "*", SearchOption.AllDirectories))
             {
                 var rel = GetRelativePath(path);
-                if (rel.StartsWith(".stora-versions") || !ShouldSync(Path.GetFileName(rel))) continue;
+                if (rel.StartsWith(".Stora") || !ShouldSync(Path.GetFileName(rel))) continue;
                 var info = new FileInfo(path);
                 localFiles.Add((rel, info.LastWriteTimeUtc, info.Length, ComputeHash(path)));
             }

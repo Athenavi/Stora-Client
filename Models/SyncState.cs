@@ -125,12 +125,15 @@ public class SyncFileState
         var fullPath = Path.Combine(syncRoot, LocalPath);
         if (File.Exists(fullPath))
         {
-            var bakDir = Path.Combine(syncRoot, ".stora-versions");
-            Directory.CreateDirectory(bakDir);
+            var storaDir = Path.Combine(syncRoot, ".Stora");
+            Directory.CreateDirectory(storaDir);
+            if ((File.GetAttributes(storaDir) & FileAttributes.Hidden) != FileAttributes.Hidden)
+                File.SetAttributes(storaDir, FileAttributes.Hidden | FileAttributes.Directory);
 
-            // 设为隐藏目录
-            if ((File.GetAttributes(bakDir) & FileAttributes.Hidden) != FileAttributes.Hidden)
-                File.SetAttributes(bakDir, FileAttributes.Hidden | FileAttributes.Directory);
+            Directory.CreateDirectory(Path.Combine(storaDir, "Objects"));
+            Directory.CreateDirectory(Path.Combine(storaDir, "versions"));
+
+            var bakDir = Path.Combine(storaDir, "versions");
 
             var bakName = $"{FileName}.v{ver.Version}.{DateTime.UtcNow:yyyyMMddHHmmss}";
             var bakPath = Path.Combine(bakDir, bakName);
