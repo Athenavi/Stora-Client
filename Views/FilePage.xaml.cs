@@ -6,6 +6,7 @@ using StoraDesktop.Models;
 using StoraDesktop.ViewModels;
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -163,6 +164,8 @@ public sealed partial class FilePage : Page
         AddItem(menu, "Copy", () => VM.CopyFilesCommand.Execute(null));
         AddItem(menu, "Cut", () => VM.CutFilesCommand.Execute(null));
         menu.Items.Add(new MenuFlyoutSeparator());
+        AddItem(menu, "Preview", () => PreviewFile(f));
+        menu.Items.Add(new MenuFlyoutSeparator());
         AddItem(menu, "Favorite", async () => await VM.ToggleFavoriteCommand.ExecuteAsync(f));
         menu.Items.Add(new MenuFlyoutSeparator());
         AddItem(menu, "Delete", async () => await VM.DeleteFileCommand.ExecuteAsync(f));
@@ -170,6 +173,15 @@ public sealed partial class FilePage : Page
         AddItem(menu, "Properties", async () => await VM.ShowPropsCommand.ExecuteAsync(f));
 
         menu.ShowAt(FileListView, e.GetPosition(FileListView));
+    }
+
+    private static void PreviewFile(FileItem? f)
+    {
+        if (f == null) return;
+        var baseUrl = App.Services.GetRequiredService<Services.StoraApiClient>().BaseUrl;
+        var url = $"{baseUrl}/api/v2/files/preview/{f.Id}/{Uri.EscapeDataString(f.Name ?? "")}";
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch { }
     }
 
     private void AddItem(MenuFlyout menu, string text, Func<Task> action)

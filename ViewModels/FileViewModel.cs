@@ -224,18 +224,16 @@ public partial class FileViewModel : ObservableObject
     public async Task ShareSelectedAsync()
     {
         if (SelectedFiles.Count == 0) { _status = "Select files first"; return; }
-        foreach (var f in SelectedFiles)
+        try
         {
-            try
-            {
-                var share = await _api.CreateShareAsync(f.Id);
-                var pkg = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
-                pkg.SetText(share.ShareUrl);
-                Clipboard.SetContent(pkg);
-            }
-            catch { }
+            var fileIds = SelectedFiles.Select(f => f.Id).ToList();
+            var share = await _api.CreateBatchShareAsync(fileIds);
+            var pkg = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+            pkg.SetText(share.ShareUrl);
+            Clipboard.SetContent(pkg);
+            _status = $"Batch share link copied: {share.ShareUrl}";
         }
-        _status = $"Shared {SelectedFiles.Count} file(s)";
+        catch (Exception ex) { _status = $"Share failed: {ex.Message}"; }
     }
 
     [RelayCommand]

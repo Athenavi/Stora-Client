@@ -270,6 +270,15 @@ public class StoraApiClient
         var r = await _httpClient.DeleteAsync($"{BaseUrl}/api/v2/files/shares/{shareId}"); r.EnsureSuccessStatusCode();
     }
 
+    public async Task<ShareItem> CreateBatchShareAsync(List<long> fileIds, string permission = "read", string? password = null, string? expireAt = null, int maxDownloads = 0)
+    {
+        var body = new { file_ids = fileIds, permission, password, expire_at = expireAt, max_downloads = maxDownloads };
+        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/shares", body, JsonOpts);
+        r.EnsureSuccessStatusCode();
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<ShareItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("batch share failed");
+    }
+
     #endregion
 
     #region Vault
@@ -289,8 +298,9 @@ public class StoraApiClient
         var body = new { password };
         using var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/vaults/{vaultId}/verify-password", body, JsonOpts);
         r.EnsureSuccessStatusCode();
-        var dict = await r.Content.ReadFromJsonAsync<Dictionary<string, string>>(JsonOpts);
-        return dict?.GetValueOrDefault("token") ?? throw new Exception("wrong password");
+        var json = await r.Content.ReadAsStringAsync();
+        var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("token", out var t) ? t.GetString() ?? throw new Exception("wrong password") : throw new Exception("wrong password");
     }
 
     public async Task<List<VaultFileItem>> GetVaultItemsAsync(long vaultId, string vaultToken)
@@ -375,10 +385,6 @@ public class StoraApiClient
     {
         var r = await _httpClient.PostAsync($"{BaseUrl}/api/v2/files/{fileId}/versions/{versionId}/restore", null); r.EnsureSuccessStatusCode();
     }
-
-    #endregion
-
-    #region Vault list
 
     public async Task<List<VaultItem>> ListVaultsAsync() { return await GetListAsync<VaultItem>("/api/v2/vaults"); }
 
