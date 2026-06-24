@@ -114,7 +114,26 @@ public partial class FileViewModel : ObservableObject
         if (f == null) return;
         try
         {
-            var share = await _api.CreateShareAsync(f.Id);
+            var permBox = new ComboBox { ItemsSource = new[] { "Read", "Download", "Edit", "Upload" }, SelectedIndex = 0 };
+            var expireBox = new ComboBox { ItemsSource = new[] { "Never", "1 hour", "6 hours", "24 hours", "3 days", "7 days" }, SelectedIndex = 0 };
+            var pwdBox = new PasswordBox { PlaceholderText = "Password (optional)" };
+            var maxBox = new TextBox { PlaceholderText = "Max downloads (0=unlimited)", Text = "0" };
+            var panel = new StackPanel { Spacing = 8 };
+            panel.Children.Add(new TextBlock { Text = "Permission:" });
+            panel.Children.Add(permBox);
+            panel.Children.Add(new TextBlock { Text = "Expires:" });
+            panel.Children.Add(expireBox);
+            panel.Children.Add(new TextBlock { Text = "Password:" });
+            panel.Children.Add(pwdBox);
+            panel.Children.Add(new TextBlock { Text = "Max downloads:" });
+            panel.Children.Add(maxBox);
+            var dialog = new ContentDialog { Title = $"Share: {f.Name}", Content = panel, PrimaryButtonText = "Create Link", CloseButtonText = "Cancel", XamlRoot = App.MainAppWindow.Content.XamlRoot };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            var perm = permBox.SelectedItem?.ToString()?.ToLower() ?? "read";
+            var expiresInHours = expireBox.SelectedIndex switch { 1 => 1, 2 => 6, 3 => 24, 4 => 72, 5 => 168, _ => 0 };
+            var password = string.IsNullOrWhiteSpace(pwdBox.Password) ? null : pwdBox.Password;
+            int.TryParse(maxBox.Text, out var maxDownloads);
+            var share = await _api.CreateShareAsync(f.Id, perm, password, expiresInHours > 0 ? expiresInHours.ToString() : null, maxDownloads);
             var pkg = new DataPackage();
             pkg.SetText(share.ShareUrl);
             Clipboard.SetContent(pkg);
