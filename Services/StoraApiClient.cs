@@ -233,6 +233,21 @@ public class StoraApiClient
         var r = await _httpClient.PutAsync($"{BaseUrl}/api/v2/files/{fileId}/favorite", null); r.EnsureSuccessStatusCode();
     }
 
+
+    public async Task BatchCopyAsync(List<long> fileIds, long targetFolderId)
+    {
+        var body = new { file_ids = fileIds, target_folder_id = targetFolderId };
+        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/batch/copy", body, JsonOpts);
+        r.EnsureSuccessStatusCode();
+    }
+
+    public async Task BatchMoveAsync(List<long> fileIds, long targetFolderId)
+    {
+        var body = new { file_ids = fileIds, target_folder_id = targetFolderId };
+        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/batch/move", body, JsonOpts);
+        r.EnsureSuccessStatusCode();
+    }
+
     #endregion
 
     #region Shares

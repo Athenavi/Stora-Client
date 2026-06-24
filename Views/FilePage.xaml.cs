@@ -30,10 +30,10 @@ public sealed partial class FilePage : Page
     {
         var sv = FindChild<ScrollViewer>(FileListView);
         if (sv != null)
-            sv.ViewChanged += (scrollSender, scrollArgs) =>
+            sv.ViewChanged += (s, a) =>
             {
-                var scroller = (ScrollViewer)scrollSender;
-                if (scroller.VerticalOffset > scroller.ScrollableHeight - 200 && VM.HasMore)
+                var sc = (ScrollViewer)s;
+                if (sc.VerticalOffset > sc.ScrollableHeight - 200 && VM.HasMore)
                     VM.LoadMoreCommand.Execute(null);
             };
     }
@@ -44,8 +44,7 @@ public sealed partial class FilePage : Page
         {
             var c = VisualTreeHelper.GetChild(parent, i);
             if (c is T t) return t;
-            var found = FindChild<T>(c);
-            if (found != null) return found;
+            var f = FindChild<T>(c); if (f != null) return f;
         }
         return null;
     }
@@ -58,27 +57,46 @@ public sealed partial class FilePage : Page
         InitializeWithWindow.Initialize(picker, hwnd);
         var files = await picker.PickMultipleFilesAsync();
         if (files == null) return;
-        foreach (var f in files)
-            await VM.ChunkedUploadAsync(f);
+        foreach (var f in files) await VM.ChunkedUploadAsync(f);
         await VM.InitAsync();
     }
 
+    private async void OnShare(object s, RoutedEventArgs e)
+    {
+        await VM.ShareFileCommand.ExecuteAsync(VM.SelectedFile);
+    }
+
+    private void OnCopy(object s, RoutedEventArgs e)
+    {
+        VM.CopyFilesCommand.Execute(null);
+    }
+
+    private void OnCut(object s, RoutedEventArgs e)
+    {
+        VM.CutFilesCommand.Execute(null);
+    }
+
+    private async void OnPaste(object s, RoutedEventArgs e)
+    {
+        await VM.PasteFilesCommand.ExecuteAsync(null);
+    }
+
+    private async void OnBack(object s, RoutedEventArgs e) => await VM.GoBackAsync();
+
     private async void OnOfflineDownload(object s, RoutedEventArgs e)
     {
-        var tb = new TextBox { PlaceholderText = "输入下载链接 URL" };
+        var tb = new TextBox { PlaceholderText = "Enter download URL" };
         var d = new ContentDialog
         {
-            Title = "离线下载",
+            Title = "Offline Download",
             Content = tb,
-            PrimaryButtonText = "添加",
-            CloseButtonText = "取消",
+            PrimaryButtonText = "Add",
+            CloseButtonText = "Cancel",
             XamlRoot = App.MainAppWindow.Content.XamlRoot
         };
         if (await d.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(tb.Text))
             await VM.AddOfflineDownloadCommand.ExecuteAsync(tb.Text);
     }
-
-    private async void OnBack(object s, RoutedEventArgs e) => await VM.GoBackAsync();
 
     private void OnDoubleTap(object s, DoubleTappedRoutedEventArgs e)
     {
@@ -101,22 +119,31 @@ public sealed partial class FilePage : Page
         if (f == null) return;
 
         var menu = new MenuFlyout();
-        AddMenuItem(menu, "⬇ 下载", async () => await VM.DownloadFileCommand.ExecuteAsync(f));
-        AddMenuItem(menu, "🔗 分享", async () => await VM.ShareFileCommand.ExecuteAsync(f));
-        AddMenuItem(menu, "⭐ 收藏", async () => await VM.ToggleFavoriteCommand.ExecuteAsync(f));
+        AddItem(menu, "Download", async () => await VM.DownloadFileCommand.ExecuteAsync(f));
+        AddItem(menu, "Share", async () => await VM.ShareFileCommand.ExecuteAsync(f));
         menu.Items.Add(new MenuFlyoutSeparator());
-        AddMenuItem(menu, "🗑 删除", async () => await VM.DeleteFileCommand.ExecuteAsync(f));
+        AddItem(menu, "Copy", () => VM.CopyFilesCommand.Execute(null));
+        AddItem(menu, "Cut", () => VM.CutFilesCommand.Execute(null));
         menu.Items.Add(new MenuFlyoutSeparator());
-        AddMenuItem(menu, "ℹ 属性", async () => await VM.ShowPropsCommand.ExecuteAsync(f));
+        AddItem(menu, "Favorite", async () => await VM.ToggleFavoriteCommand.ExecuteAsync(f));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        AddItem(menu, "Delete", async () => await VM.DeleteFileCommand.ExecuteAsync(f));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        AddItem(menu, "Properties", async () => await VM.ShowPropsCommand.ExecuteAsync(f));
 
         menu.ShowAt(FileListView, e.GetPosition(FileListView));
     }
 
-    private void AddMenuItem(MenuFlyout menu, string text, Func<Task> action)
+    private void AddItem(MenuFlyout menu, string text, Func<Task> action)
     {
         var item = new MenuFlyoutItem { Text = text };
-        item.Click += async (s, e) => await action();
-        menu.Items.Add(item);
+        item.Click += async (s, e) => await action(); menu.Items.Add(item);
+    }
+
+    private void AddItem(MenuFlyout menu, string text, Action action)
+    {
+        var item = new MenuFlyoutItem { Text = text };
+        item.Click += (s, e) => action(); menu.Items.Add(item);
     }
 
     private async void OnDrop(object s, DragEventArgs e) => await VM.HandleDropAsync(e.DataView);
@@ -124,6 +151,6 @@ public sealed partial class FilePage : Page
     private void OnDragOver(object s, DragEventArgs e)
     {
         e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
-        e.DragUIOverride.Caption = "拖拽上传到此目录";
+        e.DragUIOverride.Caption = "Upload here";
     }
 }

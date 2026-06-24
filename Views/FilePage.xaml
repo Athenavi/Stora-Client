@@ -19,14 +19,23 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Content="⬅" Click="OnBack" Margin="0,0,6,0" MinWidth="32" />
-            <Button Grid.Column="1" Content="⬆ 上传" Click="OnUpload" Margin="0,0,6,0" />
-            <Button Grid.Column="2" Content="📥 离线下载" Click="OnOfflineDownload" />
-            <TextBlock Grid.Column="3" Text="{x:Bind VM.CurrPath, Mode=OneWay}" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="14" />
-            <TextBlock Grid.Column="4" Text="{x:Bind VM.Username, Mode=OneWay}" VerticalAlignment="Center" Opacity="0.6" Margin="0,0,8,0" />
+            <Button Grid.Column="0" Content="Back" Click="OnBack" Margin="0,0,6,0" MinWidth="48" />
+            <Button Grid.Column="1" Content="Upload" Click="OnUpload" Margin="0,0,6,0" />
+            <Button Grid.Column="2" Content="Share" Click="OnShare" Margin="0,0,6,0" />
+            <Button Grid.Column="3" Content="Copy" Click="OnCopy" Margin="0,0,6,0" />
+            <Button Grid.Column="4" Content="Cut" Click="OnCut" Margin="0,0,6,0" />
+            <Button Grid.Column="5" Content="Paste" Click="OnPaste" Margin="0,0,6,0"
+                    IsEnabled="{x:Bind VM.HasClipboard, Mode=OneWay}" />
+            <TextBlock Grid.Column="6" Text="{x:Bind VM.CurrPath, Mode=OneWay}" VerticalAlignment="Center" Margin="12,0,0,0" FontSize="14" />
+            <TextBlock Grid.Column="7" Text="{x:Bind VM.ClipboardInfo, Mode=OneWay}" VerticalAlignment="Center" Opacity="0.6" Margin="0,0,8,0" />
+            <TextBlock Grid.Column="8" Text="{x:Bind VM.Username, Mode=OneWay}" VerticalAlignment="Center" Opacity="0.6" />
         </Grid>
 
         <Grid Grid.Row="1" Background="#1B5E20" Padding="8" Visibility="{x:Bind VM.ShowUploadPanel, Mode=OneWay}">

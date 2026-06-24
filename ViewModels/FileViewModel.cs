@@ -7,8 +7,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
-using Windows.Storage;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -20,15 +21,19 @@ public partial class FileViewModel : ObservableObject
     private int _page = 1, _total;
     private const int PageSize = 50;
     private UserInfo? _user;
+    private static List<long> _clipboardFileIds = new();
+    private static string _clipboardAction = "";
 
     [ObservableProperty] private string _currPath = "/";
     [ObservableProperty] private string? _currFolderId;
     [ObservableProperty] private bool _isLoading, _loadingMore;
-    [ObservableProperty] private string _status = "就绪";
+    [ObservableProperty] private string _status = "Ready";
     [ObservableProperty] private FileItem? _selectedFile;
     [ObservableProperty] private bool _showUploadPanel;
     [ObservableProperty] private double _uploadProgress;
     [ObservableProperty] private string _uploadStatus = "";
+    [ObservableProperty] private bool _hasClipboard;
+    [ObservableProperty] private string _clipboardInfo = "";
 
     public bool HasMore => _page * PageSize < _total;
     public ObservableCollection<FileItem> Files { get; } = new();
@@ -53,7 +58,7 @@ public partial class FileViewModel : ObservableObject
             _total = r.Total;
             if (clear) Files.Clear();
             foreach (var f in r.Items) Files.Add(f);
-            _status = HasMore ? $"已加载 {Files.Count}/{_total}" : $"共 {_total} 个";
+            _status = HasMore ? $"Loaded {Files.Count}/{_total}" : $"Total {_total}";
         }
         finally { IsLoading = false; _loadingMore = false; }
     }
@@ -64,7 +69,8 @@ public partial class FileViewModel : ObservableObject
         _page++; await FetchAsync(false);
     }
 
-    [RelayCommand] public async Task OpenFolderAsync(FileItem? f)
+    [RelayCommand]
+    public async Task OpenFolderAsync(FileItem? f)
     {
         if (f == null || !f.IsFolder) return;
         _currFolderId = f.Id.ToString();
@@ -78,15 +84,16 @@ public partial class FileViewModel : ObservableObject
         await FetchAsync(true);
     }
 
-    [RelayCommand] public async Task DownloadFileAsync(FileItem? f)
+    [RelayCommand]
+    public async Task DownloadFileAsync(FileItem? f)
     {
         if (f == null) return;
         try
         {
-            _status = $"下载 {f.Name}...";
+            _status = $"Downloading {f.Name}...";
             var picker = new FileSavePicker();
             picker.SuggestedFileName = f.Name ?? "download";
-            picker.FileTypeChoices.Add("所有文件", new List<string> { "." });
+            picker.FileTypeChoices.Add("All files", new List<string> { "." });
             var hwnd = WindowNative.GetWindowHandle(App.MainAppWindow);
             InitializeWithWindow.Initialize(picker, hwnd);
             var file = await picker.PickSaveFileAsync();
@@ -94,76 +101,137 @@ public partial class FileViewModel : ObservableObject
             var stream = await _api.DownloadFileAsync(f.Id.ToString());
             using var fs = await file.OpenStreamForWriteAsync();
             await stream.CopyToAsync(fs);
-            _status = $"{f.Name} 下载完成";
+            _status = $"{f.Name} downloaded";
         }
-        catch (Exception ex) { _status = $"下载失败: {ex.Message}"; }
+        catch (Exception ex) { _status = $"Download failed: {ex.Message}"; }
     }
 
-    [RelayCommand] public async Task DeleteFileAsync(FileItem? f)
+    [RelayCommand]
+    public async Task ShareFileAsync(FileItem? f)
+    {
+        if (f == null) return;
+        try
+        {
+            var share = await _api.CreateShareAsync(f.Id);
+            var pkg = new DataPackage();
+            pkg.SetText(share.ShareUrl);
+            Clipboard.SetContent(pkg);
+            _status = $"Share link copied: {share.ShareUrl}";
+            NavigateToShare?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) { _status = $"Share failed: {ex.Message}"; }
+    }
+
+    [RelayCommand]
+    public void CopyFiles()
+    {
+        if (SelectedFile == null) { _status = "Select a file first"; return; }
+        _clipboardFileIds = new List<long> { SelectedFile.Id };
+        _clipboardAction = "copy";
+        HasClipboard = true;
+        ClipboardInfo = $"{_clipboardFileIds.Count} file(s) copied";
+        _status = ClipboardInfo;
+    }
+
+    [RelayCommand]
+    public void CutFiles()
+    {
+        if (SelectedFile == null) { _status = "Select a file first"; return; }
+        _clipboardFileIds = new List<long> { SelectedFile.Id };
+        _clipboardAction = "move";
+        HasClipboard = true;
+        ClipboardInfo = $"{_clipboardFileIds.Count} file(s) cut";
+        _status = ClipboardInfo;
+    }
+
+    [RelayCommand]
+    public async Task PasteFilesAsync()
+    {
+        if (!HasClipboard || _clipboardFileIds.Count == 0) return;
+        try
+        {
+            var targetId = long.TryParse(_currFolderId, out var tid) ? tid : 0;
+            if (_clipboardAction == "copy")
+                await _api.BatchCopyAsync(_clipboardFileIds, targetId);
+            else
+                await _api.BatchMoveAsync(_clipboardFileIds, targetId);
+            _status = $"{_clipboardFileIds.Count} file(s) {_clipboardAction} completed";
+            HasClipboard = false;
+            await InitAsync();
+        }
+        catch (Exception ex) { _status = $"Paste failed: {ex.Message}"; }
+    }
+
+    [RelayCommand]
+    public void ClearClipboard()
+    {
+        _clipboardFileIds.Clear();
+        HasClipboard = false;
+        ClipboardInfo = "";
+        _status = "Clipboard cleared";
+    }
+
+    [RelayCommand]
+    public async Task DeleteFileAsync(FileItem? f)
     {
         if (f == null) return;
         await _api.DeleteFileAsync(f.Id.ToString());
         Files.Remove(f);
-        _status = $"{f.Name} 已删除";
+        _status = $"{f.Name} deleted";
     }
 
-    [RelayCommand] public async Task ShareFileAsync(FileItem? f)
-    {
-        if (f == null) return;
-        await _api.CreateShareAsync(f.Id);
-        _status = "已创建分享链接";
-        NavigateToShare?.Invoke(this, EventArgs.Empty);
-    }
-
-    [RelayCommand] public async Task ToggleFavoriteAsync(FileItem? f)
+    [RelayCommand]
+    public async Task ToggleFavoriteAsync(FileItem? f)
     {
         if (f == null) return;
         await _api.ToggleFavoriteAsync(f.Id.ToString());
         f.IsFavorite = !f.IsFavorite;
     }
 
-    [RelayCommand] public async Task ShowPropsAsync(FileItem? f)
+    [RelayCommand]
+    public async Task ShowPropsAsync(FileItem? f)
     {
         if (f == null) return;
         var d = new ContentDialog
         {
-            Title = "属性", CloseButtonText = "确定",
-            Content = $"文件名: {f.Name}\n大小: {f.SizeDisplay}\n类型: {(f.IsFolder ? "文件夹" : f.MimeType ?? "未知")}\n创建: {f.CreatedAt}",
+            Title = "Properties", CloseButtonText = "OK",
+            Content = $"Name: {f.Name}\nSize: {f.SizeDisplay}\nType: {(f.IsFolder ? "Folder" : f.MimeType ?? "Unknown")}\nCreated: {f.CreatedAt}",
             XamlRoot = App.MainAppWindow.Content.XamlRoot
         };
         await d.ShowAsync();
     }
 
-    [RelayCommand] public async Task AddOfflineDownloadAsync(string url)
+    [RelayCommand]
+    public async Task AddOfflineDownloadAsync(string url)
     {
         if (string.IsNullOrWhiteSpace(url)) return;
         await _api.CreateOfflineDownloadAsync(url);
-        _status = "已添加离线下载任务";
+        _status = "Offline download added";
     }
 
-    public async Task HandleDropAsync(Windows.ApplicationModel.DataTransfer.DataPackageView data)
+    public async Task HandleDropAsync(DataPackageView data)
     {
-        if (!data.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)) return;
+        if (!data.Contains(StandardDataFormats.StorageItems)) return;
         var items = await data.GetStorageItemsAsync();
         _showUploadPanel = true;
         int ok = 0;
         foreach (var item in items)
         {
-            if (item is StorageFile file)
+            if (item is Windows.Storage.StorageFile file)
             {
-                _uploadStatus = $"上传 {file.Name}...";
+                _uploadStatus = $"Uploading {file.Name}...";
                 using var s = await file.OpenStreamForReadAsync();
                 await _api.UploadFileAsync(s, file.Name, _currFolderId);
                 ok++;
             }
         }
-        _uploadStatus = $"完成 ({ok} 个)";
+        _uploadStatus = $"Done ({ok} files)";
         _page = 1; await FetchAsync(true);
         await Task.Delay(2000);
         _showUploadPanel = false;
     }
 
-    public async Task ChunkedUploadAsync(StorageFile file)
+    public async Task ChunkedUploadAsync(Windows.Storage.StorageFile file)
     {
         _showUploadPanel = true;
         try
@@ -172,15 +240,15 @@ public partial class FileViewModel : ObservableObject
             var size = (long)props.Size;
             if (size < 10 * 1024 * 1024)
             {
-                _uploadStatus = $"上传 {file.Name}...";
+                _uploadStatus = $"Uploading {file.Name}...";
                 using var s = await file.OpenStreamForReadAsync();
                 await _api.UploadFileAsync(s, file.Name, _currFolderId);
-                _uploadStatus = "完成";
+                _uploadStatus = "Done";
                 return;
             }
-            _uploadStatus = "初始化分片...";
+            _uploadStatus = "Init chunk upload...";
             var uploadId = await _api.InitChunkUploadAsync(file.Name, size, _currFolderId);
-            const int cs = 5 * 1024 * 1024;
+            const int cs = 4 * 1024 * 1024;
             using var stream = await file.OpenStreamForReadAsync();
             var buf = new byte[cs];
             int idx = 0, total = (int)Math.Ceiling((double)size / cs);
@@ -189,16 +257,16 @@ public partial class FileViewModel : ObservableObject
                 int read = await stream.ReadAsync(buf);
                 if (read == 0) break;
                 if (read < cs) Array.Resize(ref buf, read);
-                _uploadStatus = $"分片 {idx + 1}/{total} ({100 * idx / total}%)";
+                _uploadStatus = $"Chunk {idx + 1}/{total} ({100 * idx / total}%)";
                 _uploadProgress = (double)idx / total;
                 await _api.UploadChunkAsync(uploadId, idx, buf);
                 idx++;
                 if (read < cs) break;
             }
-            _uploadStatus = "合并中...";
+            _uploadStatus = "Merging...";
             await _api.CompleteChunkUploadAsync(uploadId);
             _uploadProgress = 1;
-            _uploadStatus = "上传完成";
+            _uploadStatus = "Upload complete";
         }
         finally
         {
