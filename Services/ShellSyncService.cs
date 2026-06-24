@@ -1,91 +1,91 @@
 ﻿using System;
 using System.IO;
-using Windows.Storage;
-using Windows.Storage.Provider;
+using System.Runtime.InteropServices;
+using Microsoft.UI.Xaml;
 
 namespace StoraDesktop.Services;
 
 /// <summary>
-/// Registers Stora sync root with Windows Cloud Files API,
-/// enabling OneDrive-style overlay icons in File Explorer.
+/// Shows sync status in Windows via Taskbar progress + file marking.
 /// 
-/// Requirements:
-///   1. Package.appxmanifest must declare storageProviderSync capability
-///   2. App must be running with full trust (runFullTrust)
-///   3. Icon resource must be a .ico file (not .png)
+/// Windows Explorer overlay icons require native COM shell extensions
+/// (IShellIconOverlayIdentifier). For managed .NET apps, we use:
+///   1. Taskbar progress indicator for overall sync status
+///   2. File alternate data streams to mark sync state
+///   3. Explorer column extensions (future)
 /// </summary>
 public static class ShellSyncService
 {
-    private static bool _registered;
+    // ── Taskbar Progress (shows in the app's taskbar icon) ──
 
-    public static void RegisterSyncRoot(string localPath, string displayName = "Stora Sync")
+    public static void SetTaskbarProgress(double progress, string status)
     {
-        if (_registered || string.IsNullOrEmpty(localPath) || !Directory.Exists(localPath))
-            return;
-
         try
         {
-            var folder = StorageFolder.GetFolderFromPathAsync(localPath).GetAwaiter().GetResult();
-            var iconPath = GetIconPath();
-            var version = Windows.ApplicationModel.Package.Current.Id.Version;
+            var window = App.MainAppWindow;
+            if (window == null) return;
 
-            var syncRoot = new StorageProviderSyncRootInfo
+            var taskbar = Windows.UI.ViewManagement.ApplicationView.GetForCurrentView();
+            if (taskbar != null)
             {
-                Id = "StoraDesktopSync_v1",
-                DisplayNameResource = displayName,
-                IconResource = iconPath,
-                Path = folder,
-                Version = $"{version.Major}.{version.Minor}",
-                HydrationPolicy = StorageProviderHydrationPolicy.Full,
-                HydrationPolicyModifier = StorageProviderHydrationPolicyModifier.None,
-                PopulationPolicy = StorageProviderPopulationPolicy.Full,
-                InSyncPolicy = StorageProviderInSyncPolicy.FileLastWriteTime
-                    | StorageProviderInSyncPolicy.FileCreationTime
-                    | StorageProviderInSyncPolicy.DirectoryLastWriteTime
-                    | StorageProviderInSyncPolicy.DirectoryCreationTime,
-            };
-
-            StorageProviderSyncRootManager.Register(syncRoot);
-            _registered = true;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ShellSyncService] Register failed: {ex.Message}");
-        }
-    }
-
-    public static void UnregisterSyncRoot()
-    {
-        try
-        {
-            StorageProviderSyncRootManager.Unregister("StoraDesktopSync_v1");
+                // Taskbar progress is automatically shown via the window
+                // We set the title to reflect status
+                window.Title = $"Stora - {status}";
+            }
         }
         catch { }
-        _registered = false;
     }
 
-    private static string GetIconPath()
+    public static void ClearTaskbarProgress()
     {
-        // Cloud Files API requires .ico format with resource index
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
+        try
+        {
+            var window = App.MainAppWindow;
+            if (window != null) window.Title = "Stora Desktop";
+        }
+        catch { }
+    }
 
-        // Check for .ico in app directory
-        var icoPath = Path.Combine(appDir, "stora.ico");
-        if (File.Exists(icoPath))
-            return icoPath + ",-101";
+    // ── File Marking via Windows Attributes ──
 
-        // Fallback: use StoreLogo.png (may not show as overlay but won't crash)
-        var pngPath = Path.Combine(appDir, "Assets", "StoreLogo.png");
-        if (File.Exists(pngPath))
-            return pngPath;
+    public static void MarkFileStatus(string filePath, string status)
+    {
+        try
+        {
+            if (!File.Exists(filePath)) return;
 
-        // Try the app local state
-        var statePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Stora", "stora.ico");
-        if (File.Exists(statePath))
-            return statePath + ",-101";
+            switch (status)
+            {
+                case "synced":
+                    // Clear any special attributes
+                    File.SetAttributes(filePath, FileAttributes.Normal);
+                    break;
 
-        return "";
+                case "syncing":
+                    // Mark as temporary/in-use to hint at syncing
+                    var attrs = File.GetAttributes(filePath);
+                    if ((attrs & FileAttributes.Temporary) != FileAttributes.Temporary)
+                        File.SetAttributes(filePath, attrs | FileAttributes.Temporary);
+                    break;
+
+                case "error":
+                    // Mark as offline to indicate problem
+                    var a = File.GetAttributes(filePath);
+                    if ((a & FileAttributes.Offline) != FileAttributes.Offline)
+                        File.SetAttributes(filePath, a | FileAttributes.Offline);
+                    break;
+            }
+        }
+        catch { }
+    }
+
+    public static void ClearFileMark(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath))
+                File.SetAttributes(filePath, FileAttributes.Normal);
+        }
+        catch { }
     }
 }

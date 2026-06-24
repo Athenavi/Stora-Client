@@ -54,7 +54,7 @@ public partial class SyncViewModel : ObservableObject
         {
             LocalPath = folder.Path;
             // Register with Windows Explorer overlay
-            ShellSyncService.RegisterSyncRoot(folder.Path);
+            // Explorer icons via taskbar progress (future: shell extension)
             SaveConfig();
         }
     }
@@ -65,13 +65,13 @@ public partial class SyncViewModel : ObservableObject
         SaveConfig();
         if (_sync.IsRunning)
         {
-            ShellSyncService.UnregisterSyncRoot();
-            _sync.Stop();
+            // ShellSyncService cleanup;
+            _sync.Stop(); ShellSyncService.ClearTaskbarProgress();
         }
         else
         {
-            ShellSyncService.RegisterSyncRoot(_localPath);
-            await _sync.StartAsync();
+            // ShellSyncService.RegisterSyncRoot(_localPath);
+            await _sync.StartAsync(); ShellSyncService.SetTaskbarProgress(50, "Syncing...");
         }
         UpdateStatus();
     }
