@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Input;
 using StoraDesktop.Models;
 using StoraDesktop.ViewModels;
 using System;
+using System.Threading.Tasks;
 
 namespace StoraDesktop.Views;
 
@@ -18,52 +19,53 @@ public sealed partial class VaultPage : Page
         Loaded += async (s, e) => await VM.LoadAsync();
     }
 
-    private async void OnCreate(object s, RoutedEventArgs e)
+    private async void OnRefresh(object s, RoutedEventArgs e) => await VM.LoadAsync();
+
+    private void OnVaultDoubleTap(object s, DoubleTappedRoutedEventArgs e)
     {
-        var nameBox = new TextBox { PlaceholderText = "保险箱名称" };
-        var pwdBox = new PasswordBox { PlaceholderText = "密码" };
-        var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(nameBox);
-        panel.Children.Add(pwdBox);
+        var v = (e.OriginalSource as FrameworkElement)?.DataContext as VaultItem;
+        if (v != null) VM.ShowUnlockCommand.Execute(v);
+    }
 
-        var d = new ContentDialog
+    private void OnUnlockClick(object s, RoutedEventArgs e)
+    {
+        var id = (s as Button)?.Tag;
+        if (id is long vid)
         {
-            Title = "新建保险箱",
-            Content = panel,
-            PrimaryButtonText = "创建",
-            CloseButtonText = "取消",
-            XamlRoot = App.MainAppWindow.Content.XamlRoot
-        };
-
-        if (await d.ShowAsync() == ContentDialogResult.Primary)
-        {
-            VM.NewVaultName = nameBox.Text;
-            VM.NewVaultPwd = pwdBox.Password;
-            await VM.CreateVaultAsync();
+            var v = new VaultItem { Id = vid };
+            foreach (var item in VM.Vaults)
+            {
+                if (item.Id == vid) { v = item; break; }
+            }
+            VM.ShowUnlockCommand.Execute(v);
         }
     }
 
-    private async void OnUnlock(object s, DoubleTappedRoutedEventArgs e)
+    private async void OnVaultRightTap(object s, RightTappedRoutedEventArgs e)
     {
-        var vault = (e.OriginalSource as FrameworkElement)?.DataContext as VaultItem;
-        if (vault == null) return;
+        var v = (e.OriginalSource as FrameworkElement)?.DataContext as VaultItem;
+        if (v == null) return;
+        var menu = new MenuFlyout();
+        var delItem = new MenuFlyoutItem { Text = "Delete Vault" };
+        delItem.Click += async (s2, e2) => await VM.DeleteVaultCommand.ExecuteAsync(v);
+        menu.Items.Add(delItem);
+        menu.ShowAt(s as ListView, e.GetPosition(s as ListView));
+    }
 
-        var pwdBox = new PasswordBox { PlaceholderText = $"输入 \"{vault.Name}\" 的密码" };
-        var d = new ContentDialog
-        {
-            Title = "解锁保险箱",
-            Content = pwdBox,
-            PrimaryButtonText = "解锁",
-            CloseButtonText = "取消",
-            XamlRoot = App.MainAppWindow.Content.XamlRoot
-        };
+    private void OnBackToList(object s, RoutedEventArgs e) => VM.BackToListCommand.Execute(null);
+    private void OnLock(object s, RoutedEventArgs e) => VM.LockCommand.Execute(null);
 
-        if (await d.ShowAsync() == ContentDialogResult.Primary)
-        {
-            VM.UnlockingVaultId = vault.Id;
-            VM.UnlockingVaultName = vault.Name;
-            VM.UnlockPwd = pwdBox.Password;
-            await VM.UnlockVaultAsync();
-        }
+    private async void OnFileRightTap(object s, RightTappedRoutedEventArgs e)
+    {
+        var f = (e.OriginalSource as FrameworkElement)?.DataContext as VaultFileItem;
+        if (f == null) return;
+        var menu = new MenuFlyout();
+        var dlItem = new MenuFlyoutItem { Text = "Download" };
+        dlItem.Click += async (s2, e2) => await VM.DownloadFileCommand.ExecuteAsync(f);
+        menu.Items.Add(dlItem);
+        var delItem = new MenuFlyoutItem { Text = "Delete" };
+        delItem.Click += async (s2, e2) => await VM.DeleteFileCommand.ExecuteAsync(f);
+        menu.Items.Add(delItem);
+        menu.ShowAt(s as ListView, e.GetPosition(s as ListView));
     }
 }

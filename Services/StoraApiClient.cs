@@ -300,6 +300,21 @@ public class StoraApiClient
         return w?.Data ?? new List<VaultFileItem>();
     }
 
+
+
+    public async Task<Stream> DownloadVaultItemAsync(long vaultId, long itemId, string vaultToken)
+    {
+        var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/vaults/{vaultId}/items/{itemId}?vault_token={vaultToken}");
+        r.EnsureSuccessStatusCode();
+        return await r.Content.ReadAsStreamAsync();
+    }
+
+    public async Task DeleteVaultItemAsync(long vaultId, long itemId, string vaultToken)
+    {
+        var r = await _httpClient.DeleteAsync($"{BaseUrl}/api/v2/vaults/{vaultId}/items/{itemId}?vault_token={vaultToken}");
+        r.EnsureSuccessStatusCode();
+    }
+
     public async Task DeleteVaultAsync(long vaultId)
     {
         var r = await _httpClient.DeleteAsync($"{BaseUrl}/api/v2/vaults/{vaultId}"); r.EnsureSuccessStatusCode();
