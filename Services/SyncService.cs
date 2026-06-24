@@ -226,7 +226,7 @@ public class SyncService
             foreach (var path in Directory.EnumerateFiles(_store.Config.LocalPath, "*", SearchOption.AllDirectories))
             {
                 var rel = GetRelativePath(path);
-                if (!ShouldSync(Path.GetFileName(rel))) continue;
+                if (rel.StartsWith(".Stora", StringComparison.OrdinalIgnoreCase) || !ShouldSync(Path.GetFileName(rel))) continue;
                 var info = new FileInfo(path);
                 localFiles[rel] = (info.LastWriteTimeUtc, info.Length, ComputeHash(path));
             }
@@ -370,7 +370,7 @@ public class SyncService
     {
         if (!_isRunning || !File.Exists(fullPath) || _index == null) return;
         var rel = GetRelativePath(fullPath);
-        if (!ShouldSync(Path.GetFileName(rel))) return;
+        if (rel.StartsWith(".Stora", StringComparison.OrdinalIgnoreCase) || !ShouldSync(Path.GetFileName(rel))) return;
         var hash = ComputeHash(fullPath);
         var info = new FileInfo(fullPath);
         var oldHash = _index.GetHash(rel);
