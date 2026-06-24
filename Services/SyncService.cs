@@ -172,6 +172,17 @@ public class SyncService
         EnsureIndex();
         _isRunning = true;
         await EnsureSyncRootAsync();
+        // Force fallback if CloudFolderId still missing
+        if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
+        {
+            try
+            {
+                var rootFiles = await _api.ListFolderContentsAsync(null);
+                var sf = rootFiles.FirstOrDefault(f => f.IsFolder && f.Name == "Sync");
+                if (sf != null) { _store.Config.CloudFolderId = sf.Id.ToString(); SaveState(); }
+            }
+            catch { }
+        }
         await FullSyncAsync();
         var ms = Math.Max(_store.Config.IntervalSeconds, 60) * 1000;
         _syncTimer = new Timer(async _ => await PollCloudAsync(), null, ms, ms);
@@ -326,6 +337,18 @@ public class SyncService
     {
         var fullPath = Path.Combine(_store.Config.LocalPath, relPath);
         if (!File.Exists(fullPath) || _index == null) return;
+
+        // Ensure Sync folder ID is available
+        if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
+        {
+            _index.AppendJournal(relPath, "debug_no_cloud_folder", $"CloudFolderId is null for {relPath}");
+            await EnsureSyncRootAsync();
+            if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
+            {
+                _index.AppendJournal(relPath, "error_no_cloud_folder", "Still null after EnsureSyncRootAsync");
+                return;
+            }
+        }
 
         try
         {
