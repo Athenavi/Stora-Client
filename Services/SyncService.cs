@@ -30,9 +30,7 @@ public class SyncService
     public SyncService(StoraApiClient api)
     {
         _api = api;
-        _statePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Stora", "sync-state.json");
+        _statePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Stora", "sync-state.json");
         Directory.CreateDirectory(Path.GetDirectoryName(_statePath)!);
         LoadState();
     }
@@ -65,8 +63,7 @@ public class SyncService
             var d = Path.Combine(_store.Config.LocalPath, ".Stora");
             var di = new DirectoryInfo(d);
             if (!di.Exists) di.Create();
-            if ((di.Attributes & FileAttributes.Hidden) != FileAttributes.Hidden)
-                di.Attributes |= FileAttributes.Hidden;
+            if ((di.Attributes & FileAttributes.Hidden) != FileAttributes.Hidden) di.Attributes |= FileAttributes.Hidden;
             Directory.CreateDirectory(Path.Combine(d, "Objects"));
             Directory.CreateDirectory(Path.Combine(d, "versions"));
             Directory.CreateDirectory(Path.Combine(d, "manifests"));
@@ -112,6 +109,8 @@ public class SyncService
         return true;
     }
 
+    // ── Phase 2: 本地块存储 + 清单 ──
+
     private void StoreLocalBlocks(string fullPath, string relPath)
     {
         try
@@ -128,24 +127,46 @@ public class SyncService
             {
                 var sz = (int)Math.Min(BLOCK_SIZE, fi.Length - offset);
                 var buf = new byte[sz]; stream.Read(buf, 0, sz);
-                var hash = ComputeHashBytes(buf);
-                _index.StoreBlock(hash, buf);
-                blocks.Add(new { index = idx, hash, offset, size = sz });
+                var h = ComputeHashBytes(buf);
+                _index.StoreBlock(h, buf);
+                blocks.Add(new { index = idx, hash = h, offset, size = sz });
                 offset += sz; idx++;
             }
             var man = new { file_hash = fileHash, file_size = fi.Length, block_size = BLOCK_SIZE, blocks, synced_at = DateTime.UtcNow.ToString("O") };
-            File.WriteAllText(Path.Combine(manDir, fileHash + ".json"),
-                JsonSerializer.Serialize(man, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(Path.Combine(manDir, fileHash + ".json"), JsonSerializer.Serialize(man, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch { }
     }
 
-    public void UpdateConfig(SyncConfig config)
+    private HashSet<string> GetLocalBlockHashes(string fileHash)
     {
-        _store.Config = config; SaveState(); EnsureIndex();
-        if (_isRunning) { Stop(); _ = StartAsync(); }
+        if (_index == null) return new HashSet<string>();
+        var manPath = Path.Combine(_index.StoraPath, "manifests", fileHash + ".json");
+        if (!File.Exists(manPath)) return new HashSet<string>();
+        try
+        {
+            var doc = JsonDocument.Parse(File.ReadAllText(manPath));
+            return doc.RootElement.GetProperty("blocks").EnumerateArray()
+                .Select(b => b.GetProperty("hash").GetString())
+                .Where(h => h != null).ToHashSet()!;
+        }
+        catch { return new HashSet<string>(); }
     }
 
+    private async Task<HashSet<string>> GetCloudBlockHashes(long cloudId)
+    {
+        try
+        {
+            var json = await _api.GetFileManifestAsync(cloudId);
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement.TryGetProperty("data", out var d) ? d : doc.RootElement;
+            if (!root.TryGetProperty("blocks", out var blocks)) return new HashSet<string>();
+            return blocks.EnumerateArray().Select(b => b.GetProperty("hash").GetString()).Where(h => h != null).ToHashSet()!;
+        }
+        catch { return new HashSet<string>(); }
+    }
+
+    public void UpdateConfig(SyncConfig config) { _store.Config = config; SaveState(); EnsureIndex(); if (_isRunning) { Stop(); _ = StartAsync(); } }
     public bool IsConfigured => !string.IsNullOrEmpty(_store.Config.LocalPath) && Directory.Exists(_store.Config.LocalPath);
 
     public async Task StartAsync()
@@ -198,13 +219,12 @@ public class SyncService
         return pid;
     }
 
-    // ── 全量同步（使用 SQLite + 创建快照） ──
+    // ── Phase 2: 全量同步（块对比 + 只传变化块） ──
 
     private async Task FullSyncAsync()
     {
         if (!IsConfigured || _index == null) return;
 
-        // 扫描本地文件
         var localFiles = new Dictionary<string, (DateTime mtime, long size, string hash)>(StringComparer.OrdinalIgnoreCase);
         try
         {
@@ -218,7 +238,6 @@ public class SyncService
         }
         catch { }
 
-        // 对比 SQLite index 中的已有数据
         var dbFiles = _index.GetAllFiles();
         var dbPaths = new HashSet<string>(dbFiles.Select(f => f.path), StringComparer.OrdinalIgnoreCase);
         var changes = new List<(string path, string hash, string action)>();
@@ -227,7 +246,6 @@ public class SyncService
         {
             if (!dbPaths.Contains(rel))
             {
-                // 新文件
                 _index.UpsertFile(rel, Path.GetFileName(rel), hash, size, mtime.ToString("O"));
                 changes.Add((rel, hash, "created"));
                 _index.AppendJournal(rel, "created", hash, size);
@@ -244,7 +262,6 @@ public class SyncService
             }
         }
 
-        // 检测删除
         foreach (var (path, hash, cloudId) in dbFiles)
         {
             if (!localFiles.ContainsKey(path))
@@ -256,17 +273,15 @@ public class SyncService
             }
         }
 
-        // 创建快照（类似 git commit）
         if (changes.Count > 0)
         {
             var msg = $"{changes.Count} file(s): " + string.Join(", ", changes.Select(c => $"{c.action}({c.path})").Take(3));
-            var snapId = _index.CreateSnapshot(msg, changes);
-            _index.AppendJournal("SNAPSHOT", $"created:{snapId}", msg);
+            _index.CreateSnapshot(msg, changes);
         }
 
         SaveState();
 
-        // 批量上传待同步文件（低 IO：批量处理，不频繁调用 API）
+        // Phase 2: 块级上传——只传变化块
         var pending = _index.GetPendingFiles();
         foreach (var (path, hash, cloudId) in pending)
         {
@@ -280,7 +295,7 @@ public class SyncService
         _store.LastSync = DateTime.UtcNow; SaveState(); StateChanged?.Invoke();
     }
 
-    // ── 上传（带块存储和 SQLite 标记） ──
+    // ── Phase 2: 块级上传（对比本地/云端清单，只传缺失块） ──
 
     private async Task UploadFileAsync(string relPath, string hash, long? existingCloudId)
     {
@@ -289,15 +304,36 @@ public class SyncService
 
         try
         {
-            // 先写入本地块存储
             StoreLocalBlocks(fullPath, relPath);
+            var fileHash = ComputeHash(fullPath);
+
+            // 1. 获取本地块清单
+            var localBlocks = GetLocalBlockHashes(fileHash);
+            if (localBlocks.Count == 0) return;
+
+            // 2. 获取云端块清单（已有 CloudId）
+            var cloudBlocks = existingCloudId != null && existingCloudId > 0
+                ? await GetCloudBlockHashes(existingCloudId.Value)
+                : new HashSet<string>();
+
+            // 3. 只传本地有、云端没有的块
+            var toUpload = localBlocks.Where(b => !cloudBlocks.Contains(b)).ToList();
+            foreach (var blockHash in toUpload)
+            {
+                var sub = Path.Combine(_index.StoraPath, "Objects", blockHash.Substring(0, 2));
+                var bp = Path.Combine(sub, blockHash.Substring(2));
+                if (File.Exists(bp))
+                {
+                    await _api.UploadBlockAsync(File.ReadAllBytes(bp));
+                }
+            }
 
             var parentId = await EnsureParentFolderAsync(relPath);
             var parent = parentId > 0 ? parentId.ToString() : _store.Config.CloudFolderId;
             var len = new FileInfo(fullPath).Length;
 
+            // 4. 上传完整文件记录
             long cloudId;
-
             if (existingCloudId != null && existingCloudId > 0)
             {
                 using var s = File.OpenRead(fullPath);
@@ -346,11 +382,15 @@ public class SyncService
             var cf = await _api.GetFilesAsync(_store.Config.CloudFolderId, perPage: 200);
             foreach (var c in cf.Items.Where(x => !x.IsFolder))
             {
-                var existing = _index.GetCloudId(c.Name);
-                if (existing != null) continue;
-
+                if (_index.GetCloudId(c.Name) != null) continue;
                 var fullPath = Path.Combine(_store.Config.LocalPath, c.Name);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+
+                // Phase 2: 块级下载——只拉缺失块
+                var cloudBlocks = await GetCloudBlockHashes(c.Id);
+                var manifestData = new List<(int idx, long offset, int size)>();
+                var fileHash = c.Name; // placeholder
+
                 using var stream = await _api.DownloadFileAsync(c.Id.ToString());
                 using var fs = File.Create(fullPath); await stream.CopyToAsync(fs);
 

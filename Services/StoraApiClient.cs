@@ -197,6 +197,12 @@ public class StoraApiClient
     /// <summary>
     /// 🔄 Get incremental changes since cursor
     /// </summary>
+    public async Task<string> GetSnapshotsAsync(long fileId)
+    {
+        var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/files/{fileId}/snapshots");
+        r.EnsureSuccessStatusCode();
+        return await r.Content.ReadAsStringAsync();
+    }
     public async Task<string> GetSyncChangesAsync(string since = "")
     {
         var url = $"{BaseUrl}/api/v2/sync/changes?limit=200";
