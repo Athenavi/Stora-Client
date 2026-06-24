@@ -29,6 +29,10 @@ public partial class ShareViewModel : ObservableObject
             foreach (var s in items) Shares.Add(s);
             _status = $"共 {items.Count} 个分享";
         }
+        catch (Exception ex)
+        {
+            _status = $"加载失败: {ex.Message}";
+        }
         finally { IsLoading = false; }
     }
 
@@ -36,9 +40,13 @@ public partial class ShareViewModel : ObservableObject
     public async Task DeleteShareAsync(ShareItem? s)
     {
         if (s == null) return;
-        await _api.DeleteShareAsync(s.Id.ToString());
-        Shares.Remove(s);
-        _status = "分享已删除";
+        try
+        {
+            await _api.DeleteShareAsync(s.Id.ToString());
+            Shares.Remove(s);
+            _status = "分享已删除";
+        }
+        catch (Exception ex) { _status = $"删除失败: {ex.Message}"; }
     }
 
     [RelayCommand]

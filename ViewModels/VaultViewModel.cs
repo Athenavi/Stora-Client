@@ -39,6 +39,7 @@ public partial class VaultViewModel : ObservableObject
             foreach (var v in items) Vaults.Add(v);
             _status = $"共 {items.Count} 个保险箱";
         }
+        catch (Exception ex) { _status = $"加载失败: {ex.Message}"; }
         finally { IsLoading = false; }
     }
 
@@ -46,10 +47,14 @@ public partial class VaultViewModel : ObservableObject
     public async Task CreateVaultAsync()
     {
         if (string.IsNullOrWhiteSpace(_newVaultName) || string.IsNullOrWhiteSpace(_newVaultPwd)) return;
-        await _api.CreateVaultAsync(_newVaultName, _newVaultPwd);
-        _showCreateDialog = false;
-        _newVaultName = _newVaultPwd = "";
-        await LoadAsync();
+        try
+        {
+            await _api.CreateVaultAsync(_newVaultName, _newVaultPwd);
+            _showCreateDialog = false;
+            _newVaultName = _newVaultPwd = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _status = $"创建失败: {ex.Message}"; }
     }
 
     [RelayCommand]
@@ -74,16 +79,20 @@ public partial class VaultViewModel : ObservableObject
             foreach (var f in items) VaultFiles.Add(f);
             _status = $"保险箱 {_unlockingVaultName}: {items.Count} 个文件";
         }
-        catch { _status = "密码错误"; }
+        catch (Exception ex) { _status = $"解锁失败: {ex.Message}"; }
     }
 
     [RelayCommand]
     public async Task DeleteVaultAsync(VaultItem? v)
     {
         if (v == null) return;
-        await _api.DeleteVaultAsync(v.Id);
-        Vaults.Remove(v);
-        _status = "保险箱已删除";
+        try
+        {
+            await _api.DeleteVaultAsync(v.Id);
+            Vaults.Remove(v);
+            _status = "保险箱已删除";
+        }
+        catch (Exception ex) { _status = $"删除失败: {ex.Message}"; }
     }
 
     [RelayCommand]

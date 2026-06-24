@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.Input;
 using StoraDesktop.Models;
 using StoraDesktop.Services;
+using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 
@@ -27,6 +28,7 @@ public partial class FavoriteViewModel : ObservableObject
             foreach (var f in r.Items) Files.Add(f);
             _status = $"共 {r.Total} 个收藏";
         }
+        catch (Exception ex) { _status = $"加载失败: {ex.Message}"; }
         finally { IsLoading = false; }
     }
 
@@ -34,8 +36,12 @@ public partial class FavoriteViewModel : ObservableObject
     public async Task RemoveFavoriteAsync(FileItem? f)
     {
         if (f == null) return;
-        await _api.ToggleFavoriteAsync(f.Id.ToString());
-        Files.Remove(f);
-        _status = "已取消收藏";
+        try
+        {
+            await _api.ToggleFavoriteAsync(f.Id.ToString());
+            Files.Remove(f);
+            _status = "已取消收藏";
+        }
+        catch (Exception ex) { _status = $"操作失败: {ex.Message}"; }
     }
 }

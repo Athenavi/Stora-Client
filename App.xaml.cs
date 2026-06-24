@@ -18,6 +18,7 @@ public partial class App : Application
 
         var sc = new ServiceCollection();
         sc.AddSingleton<StoraApiClient>();
+        sc.AddSingleton<SyncService>();           // 同步引擎（全局单例）
         sc.AddTransient<LoginViewModel>();
         sc.AddTransient<LoginPage>();
         sc.AddTransient<FileViewModel>();
@@ -32,6 +33,8 @@ public partial class App : Application
         sc.AddTransient<VaultPage>();
         sc.AddTransient<TagViewModel>();
         sc.AddTransient<TagPage>();
+        sc.AddTransient<SyncViewModel>();
+        sc.AddTransient<SyncPage>();
         Services = sc.BuildServiceProvider();
     }
 

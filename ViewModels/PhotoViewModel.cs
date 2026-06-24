@@ -2,6 +2,7 @@
 using CommunityToolkit.Mvvm.Input;
 using StoraDesktop.Models;
 using StoraDesktop.Services;
+using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 
@@ -30,6 +31,7 @@ public partial class PhotoViewModel : ObservableObject
             foreach (var f in r.Items) Photos.Add(f);
             _status = $"共 {r.Total} 张照片";
         }
+        catch (Exception ex) { _status = $"加载失败: {ex.Message}"; }
         finally { IsLoading = false; }
     }
 

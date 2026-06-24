@@ -1,29 +1,46 @@
-﻿namespace StoraDesktop.Models;
+﻿using System.Text.Json.Serialization;
 
-// 登录请求
+namespace StoraDesktop.Models;
+
 public class LoginRequest
 {
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
 }
 
-// 登录响应
 public class LoginResponse
 {
+    [JsonPropertyName("access_token")]
     public string AccessToken { get; set; } = string.Empty;
+
+    [JsonPropertyName("refresh_token")]
     public string RefreshToken { get; set; } = string.Empty;
+
+    [JsonPropertyName("user")]
     public UserInfo User { get; set; } = new();
 }
 
-// 用户信息
 public class UserInfo
 {
-    public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("username")]
     public string Username { get; set; } = string.Empty;
+
+    [JsonPropertyName("email")]
     public string Email { get; set; } = string.Empty;
+
+    [JsonPropertyName("used_storage")]
     public long StorageUsed { get; set; }
+
+    [JsonPropertyName("total_storage")]
     public long StorageTotal { get; set; }
+
+    [JsonIgnore]
     public string StorageUsedDisplay => FormatSize(StorageUsed);
+
+    [JsonIgnore]
     public string StorageTotalDisplay => FormatSize(StorageTotal);
 
     private static string FormatSize(long bytes) => bytes switch
