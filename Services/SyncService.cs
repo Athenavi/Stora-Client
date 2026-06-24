@@ -430,7 +430,7 @@ public class SyncService
             {
                 // 大文件(>10MB) → 分片上传
                 var uploadId = await _api.InitChunkUploadAsync(file.FileName, fileLen, parentFolder);
-                const int cs = 5 * 1024 * 1024;
+                const int cs = 4 * 1024 * 1024;
                 var total = (int)Math.Ceiling((double)fileLen / cs);
                 using var stream = File.OpenRead(fullPath);
                 var buf = new byte[cs];

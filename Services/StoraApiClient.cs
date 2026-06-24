@@ -171,6 +171,40 @@ public class StoraApiClient
         throw new Exception("chunk complete failed: no file_id");
     }
 
+    /// <summary>
+    /// 📦 Upload a single 4MB block
+    /// </summary>
+    public async Task<string> UploadBlockAsync(byte[] data)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new ByteArrayContent(data), "block", "block.dat");
+        var r = await _httpClient.PostAsync($"{BaseUrl}/api/v2/blocks/upload", content);
+        r.EnsureSuccessStatusCode();
+        var dict = await r.Content.ReadFromJsonAsync<Dictionary<string, object>>(JsonOpts);
+        return dict?.GetValueOrDefault("hash")?.ToString() ?? "";
+    }
+
+    /// <summary>
+    /// 📋 Get file block manifest
+    /// </summary>
+    public async Task<string> GetFileManifestAsync(long fileId)
+    {
+        var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/files/{fileId}/manifest");
+        r.EnsureSuccessStatusCode();
+        return await r.Content.ReadAsStringAsync();
+    }
+
+    /// <summary>
+    /// 🔄 Get incremental changes since cursor
+    /// </summary>
+    public async Task<string> GetSyncChangesAsync(string since = "")
+    {
+        var url = $"{BaseUrl}/api/v2/sync/changes?limit=200";
+        if (!string.IsNullOrEmpty(since)) url += $"&since={since}";
+        var r = await _httpClient.GetAsync(url);
+        r.EnsureSuccessStatusCode();
+        return await r.Content.ReadAsStringAsync();
+    }
     public async Task<string> CheckUploadStatusAsync(string uploadId)
     {
         var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/files/upload/{uploadId}/status"); r.EnsureSuccessStatusCode();
