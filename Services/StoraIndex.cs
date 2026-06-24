@@ -132,7 +132,7 @@ public class StoraIndex : IDisposable
             cmd.CommandText = "SELECT cloud_id FROM files WHERE path = $p";
             cmd.Parameters.AddWithValue("$p", path);
             var v = cmd.ExecuteScalar();
-            return v != DBNull.Value && v != null ? (long?)Convert.ToInt64(v) : null;
+            return v is not null && v != DBNull.Value ? (long?)Convert.ToInt64(v) : null;
         }
     }
 

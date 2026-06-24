@@ -378,7 +378,7 @@ public class SyncService
         {
             _index.UpsertFile(rel, Path.GetFileName(rel), hash, info.Length, info.LastWriteTimeUtc.ToString("O"));
             _index.AppendJournal(rel, "modified", hash, info.Length);
-            var cloudId = _index.GetCloudId(rel);
+            var cloudId = rel != null ? _index.GetCloudId(rel) : null;
             await UploadFileAsync(rel, hash, cloudId);
             _index.CreateSnapshot($"modified: {Path.GetFileName(rel)}", new List<(string, string, string)> { (rel, hash, "modified") });
         }
@@ -389,7 +389,7 @@ public class SyncService
     {
         if (!_isRunning || _index == null) return;
         var rel = GetRelativePath(fullPath);
-        var cloudId = _index.GetCloudId(rel);
+        var cloudId = rel != null ? _index.GetCloudId(rel) : null;
         _index.AppendJournal(rel, "deleted", _index.GetHash(rel) ?? "");
         _index.RemoveFile(rel);
         _store.Files.RemoveAll(f => f.LocalPath == rel);

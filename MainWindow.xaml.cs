@@ -66,7 +66,7 @@ public sealed partial class MainWindow : Window
         }
 
         var logoutBtn = new Button { Content = "🚪", FontSize = 18, Width = 40, Height = 40, Background = null, Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(8) };
-        logoutBtn.Click += async (s, e) => { await App.Services.GetRequiredService<StoraApiClient>().LogoutAsync(); MainFrame.Content = CreateLoginPage(); };
+        logoutBtn.Click += async (s, e) => { await App.Services.GetRequiredService<StoraApiClient>().LogoutAsync(); if (MainFrame != null) MainFrame.Content = CreateLoginPage(); };
         Grid.SetRow(logoutBtn, 2);
 
         sidebar.Children.Add(logo);
