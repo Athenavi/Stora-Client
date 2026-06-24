@@ -257,7 +257,7 @@ public class StoraApiClient
         return await GetListAsync<ShareItem>("/api/v2/files/shares");
     }
 
-    public async Task<ShareItem> CreateShareAsync(long fileId, string permission = "view", string? expireAt = null)
+    public async Task<ShareItem> CreateShareAsync(long fileId, string permission = "read", string? expireAt = null)
     {
         var body = new { file_id = fileId, permission, expire_at = expireAt };
         var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/shares", body, JsonOpts); r.EnsureSuccessStatusCode();
