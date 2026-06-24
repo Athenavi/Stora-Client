@@ -14,6 +14,7 @@ public class SyncService
 {
     private readonly StoraApiClient _api;
     private SyncStore _store = new();
+    private StoraIndex? _index;
     private Timer? _syncTimer;
     private FileSystemWatcher? _watcher;
     private bool _isRunning;
@@ -21,6 +22,7 @@ public class SyncService
     private const int BLOCK_SIZE = 4 * 1024 * 1024;
 
     public SyncStore Store => _store;
+    public StoraIndex? Index => _index;
     public bool IsRunning => _isRunning;
     public event Action? StateChanged;
     public event Action<SyncFileState>? FileStatusChanged;
@@ -33,7 +35,6 @@ public class SyncService
             "Stora", "sync-state.json");
         Directory.CreateDirectory(Path.GetDirectoryName(_statePath)!);
         LoadState();
-        InitStoraDir();
     }
 
     private void LoadState()
@@ -48,15 +49,24 @@ public class SyncService
         catch { }
     }
 
+    private void EnsureIndex()
+    {
+        if (_index == null && !string.IsNullOrEmpty(_store.Config.LocalPath))
+        {
+            _index = new StoraIndex(_store.Config.LocalPath);
+            InitStoraDir();
+        }
+    }
+
     private void InitStoraDir()
     {
         try
         {
-            if (string.IsNullOrEmpty(_store.Config.LocalPath)) return;
             var d = Path.Combine(_store.Config.LocalPath, ".Stora");
-            Directory.CreateDirectory(d);
-            if ((File.GetAttributes(d) & FileAttributes.Hidden) != FileAttributes.Hidden)
-                File.SetAttributes(d, FileAttributes.Hidden | FileAttributes.Directory);
+            var di = new DirectoryInfo(d);
+            if (!di.Exists) di.Create();
+            if ((di.Attributes & FileAttributes.Hidden) != FileAttributes.Hidden)
+                di.Attributes |= FileAttributes.Hidden;
             Directory.CreateDirectory(Path.Combine(d, "Objects"));
             Directory.CreateDirectory(Path.Combine(d, "versions"));
             Directory.CreateDirectory(Path.Combine(d, "manifests"));
@@ -64,117 +74,21 @@ public class SyncService
         catch { }
     }
 
-    private void AppendJournal(string relPath, string action, string hash)
-    {
-        try
-        {
-            var jp = Path.Combine(_store.Config.LocalPath, ".Stora", "journal.jsonl");
-            var e = JsonSerializer.Serialize(new { time = DateTime.UtcNow.ToString("O"), path = relPath, action, hash });
-            File.AppendAllText(jp, e + Environment.NewLine);
-        }
-        catch { }
-    }
-
-    // ── 本地块存储（同步后写入 .Stora/Objects/） ──
-
-    private void StoreLocalBlocks(string fullPath, string relPath)
-    {
-        try
-        {
-            var fi = new FileInfo(fullPath);
-            if (!fi.Exists || fi.Length == 0) return;
-
-            var storaDir = Path.Combine(_store.Config.LocalPath, ".Stora");
-            var objDir = Path.Combine(storaDir, "Objects");
-            var manDir = Path.Combine(storaDir, "manifests");
-
-            var fileHash = ComputeHash(fullPath);
-            using var stream = File.OpenRead(fullPath);
-            var blocks = new List<object>();
-            long offset = 0;
-            int idx = 0;
-
-            while (offset < fi.Length)
-            {
-                var sz = (int)Math.Min(BLOCK_SIZE, fi.Length - offset);
-                var buf = new byte[sz];
-                stream.Read(buf, 0, sz);
-
-                var hash = ComputeHashBytes(buf);
-                var sub = Path.Combine(objDir, hash.Substring(0, 2));
-                Directory.CreateDirectory(sub);
-                var bp = Path.Combine(sub, hash.Substring(2));
-                if (!File.Exists(bp)) File.WriteAllBytes(bp, buf);
-
-                blocks.Add(new { index = idx, hash, offset, size = sz });
-                offset += sz;
-                idx++;
-            }
-
-            var man = new
-            {
-                file_hash = fileHash,
-                file_size = fi.Length,
-                block_size = BLOCK_SIZE,
-                blocks,
-                synced_at = DateTime.UtcNow.ToString("O")
-            };
-            File.WriteAllText(Path.Combine(manDir, fileHash + ".json"),
-                JsonSerializer.Serialize(man, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch { }
-    }
-
-    private static string ComputeHashBytes(byte[] data)
-    {
-        using var sha = SHA256.Create();
-        return BitConverter.ToString(sha.ComputeHash(data)).Replace("-", "").ToLower();
-    }
-
-    public void UpdateConfig(SyncConfig config) { _store.Config = config; SaveState(); InitStoraDir(); if (_isRunning) { Stop(); _ = StartAsync(); } }
-    public bool IsConfigured => !string.IsNullOrEmpty(_store.Config.LocalPath) && Directory.Exists(_store.Config.LocalPath);
-
-    public async Task StartAsync()
-    {
-        if (_isRunning || !IsConfigured) return;
-        _isRunning = true;
-        await EnsureSyncRootAsync();
-        await FullSyncAsync();
-        var ms = Math.Max(_store.Config.IntervalSeconds, 60) * 1000;
-        _syncTimer = new Timer(async _ => await PollCloudAsync(), null, ms, ms);
-        StartWatcher();
-        StateChanged?.Invoke();
-    }
-
-    public void Stop() { _isRunning = false; _syncTimer?.Dispose(); _syncTimer = null; StopWatcher(); SaveState(); StateChanged?.Invoke(); }
-
-    private void StartWatcher()
-    {
-        if (!IsConfigured) return;
-        try
-        {
-            _watcher = new FileSystemWatcher(_store.Config.LocalPath)
-            {
-                IncludeSubdirectories = true,
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
-            };
-            _watcher.Created += (s, e) => _ = OnLocalChangeAsync(e.FullPath);
-            _watcher.Changed += (s, e) => _ = OnLocalChangeAsync(e.FullPath);
-            _watcher.Deleted += (s, e) => _ = OnLocalDeleteAsync(e.FullPath);
-            _watcher.Renamed += (s, e) => _ = OnLocalRenameAsync(e.OldFullPath, e.FullPath);
-            _watcher.EnableRaisingEvents = true;
-        }
-        catch { }
-    }
-
-    private void StopWatcher() { _watcher?.Dispose(); _watcher = null; }
-
-    private string GetRelativePath(string fullPath) { var root = _store.Config.LocalPath.TrimEnd('\\', '/') + "\\"; return fullPath.StartsWith(root) ? fullPath.Substring(root.Length) : fullPath; }
-
     private static string ComputeHash(string path)
     {
         try { using var sha = SHA256.Create(); using var f = File.OpenRead(path); return BitConverter.ToString(sha.ComputeHash(f)).Replace("-", "").ToLower(); }
         catch { return ""; }
+    }
+
+    private static string ComputeHashBytes(byte[] data)
+    {
+        using var sha = SHA256.Create(); return BitConverter.ToString(sha.ComputeHash(data)).Replace("-", "").ToLower();
+    }
+
+    private string GetRelativePath(string fullPath)
+    {
+        var root = _store.Config.LocalPath.TrimEnd('\\', '/') + "\\";
+        return fullPath.StartsWith(root) ? fullPath.Substring(root.Length) : fullPath;
     }
 
     private bool ShouldSync(string name)
@@ -198,6 +112,74 @@ public class SyncService
         return true;
     }
 
+    private void StoreLocalBlocks(string fullPath, string relPath)
+    {
+        try
+        {
+            var fi = new FileInfo(fullPath);
+            if (!fi.Exists || fi.Length == 0 || _index == null) return;
+            var objDir = Path.Combine(_index.StoraPath, "Objects");
+            var manDir = Path.Combine(_index.StoraPath, "manifests");
+            var fileHash = ComputeHash(fullPath);
+            using var stream = File.OpenRead(fullPath);
+            var blocks = new List<object>();
+            long offset = 0; int idx = 0;
+            while (offset < fi.Length)
+            {
+                var sz = (int)Math.Min(BLOCK_SIZE, fi.Length - offset);
+                var buf = new byte[sz]; stream.Read(buf, 0, sz);
+                var hash = ComputeHashBytes(buf);
+                _index.StoreBlock(hash, buf);
+                blocks.Add(new { index = idx, hash, offset, size = sz });
+                offset += sz; idx++;
+            }
+            var man = new { file_hash = fileHash, file_size = fi.Length, block_size = BLOCK_SIZE, blocks, synced_at = DateTime.UtcNow.ToString("O") };
+            File.WriteAllText(Path.Combine(manDir, fileHash + ".json"),
+                JsonSerializer.Serialize(man, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { }
+    }
+
+    public void UpdateConfig(SyncConfig config)
+    {
+        _store.Config = config; SaveState(); EnsureIndex();
+        if (_isRunning) { Stop(); _ = StartAsync(); }
+    }
+
+    public bool IsConfigured => !string.IsNullOrEmpty(_store.Config.LocalPath) && Directory.Exists(_store.Config.LocalPath);
+
+    public async Task StartAsync()
+    {
+        if (_isRunning || !IsConfigured) return;
+        EnsureIndex();
+        _isRunning = true;
+        await EnsureSyncRootAsync();
+        await FullSyncAsync();
+        var ms = Math.Max(_store.Config.IntervalSeconds, 60) * 1000;
+        _syncTimer = new Timer(async _ => await PollCloudAsync(), null, ms, ms);
+        StartWatcher();
+        StateChanged?.Invoke();
+    }
+
+    public void Stop() { _isRunning = false; _syncTimer?.Dispose(); _syncTimer = null; StopWatcher(); SaveState(); _index?.Dispose(); _index = null; StateChanged?.Invoke(); }
+
+    private void StartWatcher()
+    {
+        if (!IsConfigured) return;
+        try
+        {
+            _watcher = new FileSystemWatcher(_store.Config.LocalPath) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
+            _watcher.Created += (s, e) => _ = OnLocalChangeAsync(e.FullPath);
+            _watcher.Changed += (s, e) => _ = OnLocalChangeAsync(e.FullPath);
+            _watcher.Deleted += (s, e) => _ = OnLocalDeleteAsync(e.FullPath);
+            _watcher.Renamed += (s, e) => _ = OnLocalRenameAsync(e.OldFullPath, e.FullPath);
+            _watcher.EnableRaisingEvents = true;
+        }
+        catch { }
+    }
+
+    private void StopWatcher() { _watcher?.Dispose(); _watcher = null; }
+
     private async Task EnsureSyncRootAsync()
     {
         try { var f = await _api.CreateFolderByPathAsync("Sync"); _store.Config.CloudFolderId = f.Id.ToString(); SaveState(); }
@@ -211,16 +193,18 @@ public class SyncService
         long pid = long.TryParse(_store.Config.CloudFolderId, out var rid) ? rid : 0;
         foreach (var seg in dir.Split('/', StringSplitOptions.RemoveEmptyEntries))
         {
-            try { var c = await _api.CreateFolderAsync(seg, pid.ToString()); pid = c.Id; }
-            catch { }
+            try { var c = await _api.CreateFolderAsync(seg, pid.ToString()); pid = c.Id; } catch { }
         }
         return pid;
     }
 
+    // ── 全量同步（使用 SQLite + 创建快照） ──
+
     private async Task FullSyncAsync()
     {
-        if (!IsConfigured) return;
+        if (!IsConfigured || _index == null) return;
 
+        // 扫描本地文件
         var localFiles = new Dictionary<string, (DateTime mtime, long size, string hash)>(StringComparer.OrdinalIgnoreCase);
         try
         {
@@ -234,177 +218,209 @@ public class SyncService
         }
         catch { }
 
-        var merged = new List<SyncFileState>();
-        var toDel = new List<SyncFileState>();
-
-        foreach (var existing in _store.Files)
-        {
-            if (localFiles.TryGetValue(existing.LocalPath, out var cur))
-            {
-                if (existing.Status == "synced" && existing.LocalHash != cur.hash)
-                {
-                    existing.BackupVersion(_store.Config.LocalPath, "sync");
-                    existing.LocalHash = cur.hash; existing.LocalModified = cur.mtime; existing.Size = cur.size; existing.Status = "pending";
-                    AppendJournal(existing.LocalPath, "modified", cur.hash);
-                }
-                merged.Add(existing);
-                localFiles.Remove(existing.LocalPath);
-            }
-            else if (existing.CloudId != null && existing.Status == "synced")
-            {
-                toDel.Add(existing);
-                AppendJournal(existing.LocalPath, "deleted", "");
-            }
-        }
+        // 对比 SQLite index 中的已有数据
+        var dbFiles = _index.GetAllFiles();
+        var dbPaths = new HashSet<string>(dbFiles.Select(f => f.path), StringComparer.OrdinalIgnoreCase);
+        var changes = new List<(string path, string hash, string action)>();
 
         foreach (var (rel, (mtime, size, hash)) in localFiles)
         {
-            merged.Add(new SyncFileState { LocalPath = rel, FileName = Path.GetFileName(rel), LocalHash = hash, LocalModified = mtime, Size = size, Status = "pending" });
-            AppendJournal(rel, "created", hash);
+            if (!dbPaths.Contains(rel))
+            {
+                // 新文件
+                _index.UpsertFile(rel, Path.GetFileName(rel), hash, size, mtime.ToString("O"));
+                changes.Add((rel, hash, "created"));
+                _index.AppendJournal(rel, "created", hash, size);
+            }
+            else
+            {
+                var oldHash = _index.GetHash(rel);
+                if (oldHash != hash)
+                {
+                    _index.UpsertFile(rel, Path.GetFileName(rel), hash, size, mtime.ToString("O"));
+                    changes.Add((rel, hash, "modified"));
+                    _index.AppendJournal(rel, "modified", hash, size);
+                }
+            }
         }
 
-        foreach (var d in toDel) { try { await _api.DeleteFileAsync(d.CloudId.ToString()); } catch { } }
+        // 检测删除
+        foreach (var (path, hash, cloudId) in dbFiles)
+        {
+            if (!localFiles.ContainsKey(path))
+            {
+                _index.RemoveFile(path);
+                changes.Add((path, hash, "deleted"));
+                _index.AppendJournal(path, "deleted", hash);
+                if (cloudId > 0) { try { await _api.DeleteFileAsync(cloudId.ToString()); } catch { } }
+            }
+        }
 
-        _store.Files = merged; _store.LastSync = DateTime.UtcNow; SaveState();
+        // 创建快照（类似 git commit）
+        if (changes.Count > 0)
+        {
+            var msg = $"{changes.Count} file(s): " + string.Join(", ", changes.Select(c => $"{c.action}({c.path})").Take(3));
+            var snapId = _index.CreateSnapshot(msg, changes);
+            _index.AppendJournal("SNAPSHOT", $"created:{snapId}", msg);
+        }
 
-        foreach (var file in _store.Files.Where(f => f.Status == "pending"))
-            await UploadFileAsync(file);
+        SaveState();
+
+        // 批量上传待同步文件（低 IO：批量处理，不频繁调用 API）
+        var pending = _index.GetPendingFiles();
+        foreach (var (path, hash, cloudId) in pending)
+        {
+            var fullPath = Path.Combine(_store.Config.LocalPath, path);
+            if (File.Exists(fullPath))
+            {
+                await UploadFileAsync(path, hash, cloudId > 0 ? cloudId : null);
+            }
+        }
 
         _store.LastSync = DateTime.UtcNow; SaveState(); StateChanged?.Invoke();
     }
 
-    private async Task PollCloudAsync()
+    // ── 上传（带块存储和 SQLite 标记） ──
+
+    private async Task UploadFileAsync(string relPath, string hash, long? existingCloudId)
     {
-        if (!_isRunning) return;
+        var fullPath = Path.Combine(_store.Config.LocalPath, relPath);
+        if (!File.Exists(fullPath) || _index == null) return;
+
         try
         {
-            var cf = await _api.GetFilesAsync(_store.Config.CloudFolderId, perPage: 200);
-            foreach (var c in cf.Items.Where(c => !c.IsFolder))
-            {
-                if (_store.Files.Any(f => f.FileName.Equals(c.Name, StringComparison.OrdinalIgnoreCase))) continue;
-                _store.Files.Add(new SyncFileState { LocalPath = c.Name, FileName = c.Name, CloudId = c.Id, Status = "pending", Size = c.Size ?? 0 });
-                await DownloadFileAsync(_store.Files.Last());
-            }
-            SaveState(); StateChanged?.Invoke();
-        }
-        catch { }
-    }
+            // 先写入本地块存储
+            StoreLocalBlocks(fullPath, relPath);
 
-    private async Task OnLocalChangeAsync(string fullPath)
-    {
-        if (!_isRunning || !File.Exists(fullPath)) return;
-        var rel = GetRelativePath(fullPath);
-        if (!ShouldSync(Path.GetFileName(rel))) return;
-        var hash = ComputeHash(fullPath);
-        var info = new FileInfo(fullPath);
-        var e = _store.Files.FirstOrDefault(f => f.LocalPath.Equals(rel, StringComparison.OrdinalIgnoreCase));
-        if (e != null)
-        {
-            if (e.LocalHash != hash) { e.BackupVersion(_store.Config.LocalPath, "sync"); e.LocalHash = hash; e.LocalModified = info.LastWriteTimeUtc; e.Size = info.Length; AppendJournal(rel, "modified", hash); await UploadFileAsync(e); }
-        }
-        else
-        {
-            _store.Files.Add(new SyncFileState { LocalPath = rel, FileName = Path.GetFileName(rel), LocalHash = hash, LocalModified = info.LastWriteTimeUtc, Size = info.Length, Status = "pending" });
-            AppendJournal(rel, "created", hash); await UploadFileAsync(_store.Files.Last());
-        }
-        SaveState(); StateChanged?.Invoke();
-    }
-
-    private async Task OnLocalDeleteAsync(string fullPath)
-    {
-        if (!_isRunning) return;
-        var rel = GetRelativePath(fullPath);
-        var e = _store.Files.FirstOrDefault(f => f.LocalPath.Equals(rel, StringComparison.OrdinalIgnoreCase));
-        if (e == null) return;
-        AppendJournal(rel, "deleted", e.LocalHash);
-        if (e.CloudId != null) { try { await _api.DeleteFileAsync(e.CloudId.ToString()); } catch { } }
-        _store.Files.Remove(e); SaveState(); StateChanged?.Invoke();
-    }
-
-    private async Task OnLocalRenameAsync(string oldPath, string newPath)
-    {
-        if (!_isRunning) return;
-        var e = _store.Files.FirstOrDefault(f => f.LocalPath.Equals(GetRelativePath(oldPath), StringComparison.OrdinalIgnoreCase));
-        if (e != null) { AppendJournal(GetRelativePath(oldPath), "deleted", e.LocalHash); e.LocalPath = GetRelativePath(newPath); e.FileName = Path.GetFileName(newPath); AppendJournal(e.LocalPath, "created", e.LocalHash); SaveState(); }
-    }
-
-    private async Task UploadFileAsync(SyncFileState file)
-    {
-        var fullPath = Path.Combine(_store.Config.LocalPath, file.LocalPath);
-        if (!File.Exists(fullPath)) return;
-        try
-        {
-            file.Status = "syncing"; file.Direction = "upload"; FileStatusChanged?.Invoke(file);
-
-            // 先创建本地块存储
-            StoreLocalBlocks(fullPath, file.LocalPath);
-
-            var parentId = await EnsureParentFolderAsync(file.LocalPath);
+            var parentId = await EnsureParentFolderAsync(relPath);
             var parent = parentId > 0 ? parentId.ToString() : _store.Config.CloudFolderId;
             var len = new FileInfo(fullPath).Length;
 
-            if (file.CloudId != null)
+            long cloudId;
+
+            if (existingCloudId != null && existingCloudId > 0)
             {
-                using var s = File.OpenRead(fullPath); await _api.UpdateFileContentAsync(file.CloudId.Value, s, file.FileName);
+                using var s = File.OpenRead(fullPath);
+                await _api.UpdateFileContentAsync(existingCloudId.Value, s, Path.GetFileName(relPath));
+                cloudId = existingCloudId.Value;
             }
             else if (len > 10 * 1024 * 1024)
             {
-                var uid = await _api.InitChunkUploadAsync(file.FileName, len, parent);
+                var uid = await _api.InitChunkUploadAsync(Path.GetFileName(relPath), len, parent);
                 const int cs = 4 * 1024 * 1024;
                 var total = (int)Math.Ceiling((double)len / cs);
                 using var stream = File.OpenRead(fullPath);
                 var buf = new byte[cs];
                 for (int i = 0; i < total; i++)
                 {
-                    if (!_isRunning) { file.Status = "pending"; FileStatusChanged?.Invoke(file); return; }
+                    if (!_isRunning) return;
                     var r = (int)Math.Min(cs, len - i * cs); if (r < cs) buf = new byte[r];
                     await stream.ReadAsync(buf, 0, r);
                     await _api.UploadChunkAsync(uid, i, buf);
-                    file.Progress = (int)(100.0 * (i + 1) / total); FileStatusChanged?.Invoke(file);
                 }
-                file.CloudId = await _api.CompleteChunkUploadAsync(uid);
+                cloudId = await _api.CompleteChunkUploadAsync(uid);
             }
             else
             {
-                using var s = File.OpenRead(fullPath); var u = await _api.UploadFileAsync(s, file.FileName, parent); file.CloudId = u.Id;
+                using var s = File.OpenRead(fullPath);
+                var u = await _api.UploadFileAsync(s, Path.GetFileName(relPath), parent);
+                cloudId = u.Id;
             }
 
-            file.CloudHash = file.LocalHash; file.Status = "synced"; file.Progress = 100; FileStatusChanged?.Invoke(file);
+            _index.MarkSynced(relPath, cloudId, hash);
+            _index.AppendJournal(relPath, "synced", hash, len);
         }
-        catch (Exception ex) { file.Status = "error"; file.Error = ex.Message; FileStatusChanged?.Invoke(file); }
+        catch (Exception ex)
+        {
+            _index.AppendJournal(relPath, "error", ex.Message);
+        }
     }
 
-    private async Task DownloadFileAsync(SyncFileState file)
+    // ── 轮询云端 ──
+
+    private async Task PollCloudAsync()
     {
-        if (file.CloudId == null) return;
-        var fullPath = Path.Combine(_store.Config.LocalPath, file.LocalPath);
+        if (!_isRunning || _index == null) return;
         try
         {
-            file.Status = "syncing"; file.Direction = "download"; FileStatusChanged?.Invoke(file);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            if (File.Exists(fullPath)) { var lh = ComputeHash(fullPath); if (lh != file.LocalHash) file.BackupVersion(_store.Config.LocalPath, "sync"); }
-            using var stream = await _api.DownloadFileAsync(file.CloudId.ToString());
-            using var fs = File.Create(fullPath); await stream.CopyToAsync(fs);
-            file.LocalHash = ComputeHash(fullPath); file.Status = "synced"; file.Progress = 100; FileStatusChanged?.Invoke(file);
+            var cf = await _api.GetFilesAsync(_store.Config.CloudFolderId, perPage: 200);
+            foreach (var c in cf.Items.Where(x => !x.IsFolder))
+            {
+                var existing = _index.GetCloudId(c.Name);
+                if (existing != null) continue;
 
-            // 下载后也创建本地块存储
-            StoreLocalBlocks(fullPath, file.LocalPath);
+                var fullPath = Path.Combine(_store.Config.LocalPath, c.Name);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                using var stream = await _api.DownloadFileAsync(c.Id.ToString());
+                using var fs = File.Create(fullPath); await stream.CopyToAsync(fs);
+
+                var hash = ComputeHash(fullPath);
+                _index.UpsertFile(c.Name, c.Name, hash, c.Size ?? 0, DateTime.UtcNow.ToString("O"));
+                _index.MarkSynced(c.Name, c.Id, hash);
+                _index.AppendJournal(c.Name, "downloaded", hash, c.Size ?? 0);
+                StoreLocalBlocks(fullPath, c.Name);
+            }
+            SaveState(); StateChanged?.Invoke();
         }
-        catch (Exception ex) { file.Status = "error"; file.Error = ex.Message; FileStatusChanged?.Invoke(file); }
+        catch { }
+    }
+
+    // ── 本地事件处理 ──
+
+    private async Task OnLocalChangeAsync(string fullPath)
+    {
+        if (!_isRunning || !File.Exists(fullPath) || _index == null) return;
+        var rel = GetRelativePath(fullPath);
+        if (!ShouldSync(Path.GetFileName(rel))) return;
+        var hash = ComputeHash(fullPath);
+        var info = new FileInfo(fullPath);
+        var oldHash = _index.GetHash(rel);
+        if (oldHash != hash)
+        {
+            _index.UpsertFile(rel, Path.GetFileName(rel), hash, info.Length, info.LastWriteTimeUtc.ToString("O"));
+            _index.AppendJournal(rel, "modified", hash, info.Length);
+            var cloudId = _index.GetCloudId(rel);
+            await UploadFileAsync(rel, hash, cloudId);
+            var changes = new List<(string, string, string)> { (rel, hash, "modified") };
+            _index.CreateSnapshot($"modified: {Path.GetFileName(rel)}", changes);
+        }
+        StateChanged?.Invoke();
+    }
+
+    private async Task OnLocalDeleteAsync(string fullPath)
+    {
+        if (!_isRunning || _index == null) return;
+        var rel = GetRelativePath(fullPath);
+        var cloudId = _index.GetCloudId(rel);
+        _index.AppendJournal(rel, "deleted", _index.GetHash(rel) ?? "");
+        _index.RemoveFile(rel);
+        if (cloudId != null && cloudId > 0) { try { await _api.DeleteFileAsync(cloudId.ToString()); } catch { } }
+        var changes = new List<(string, string, string)> { (rel, "", "deleted") };
+        _index.CreateSnapshot($"deleted: {Path.GetFileName(rel)}", changes);
+        StateChanged?.Invoke();
+    }
+
+    private async Task OnLocalRenameAsync(string oldPath, string newPath)
+    {
+        if (!_isRunning || _index == null) return;
+        var oldRel = GetRelativePath(oldPath); var newRel = GetRelativePath(newPath);
+        var cloudId = _index.GetCloudId(oldRel);
+        _index.AppendJournal(oldRel, "renamed", newRel);
+        _index.RemoveFile(oldRel);
+        _index.UpsertFile(newRel, Path.GetFileName(newRel), _index.GetHash(oldRel) ?? "", new FileInfo(newPath).Length, DateTime.UtcNow.ToString("O"));
+        if (cloudId != null) _index.MarkSynced(newRel, cloudId.Value, _index.GetHash(newRel) ?? "");
+        var changes = new List<(string, string, string)> { (oldRel, "", "deleted"), (newRel, _index.GetHash(newRel) ?? "", "created") };
+        _index.CreateSnapshot($"renamed: {Path.GetFileName(oldPath)} -> {Path.GetFileName(newPath)}", changes);
     }
 
     public void SaveStatePublic() => SaveState();
-
     public async Task ResolveConflictAsync(SyncFileState file, string mode)
     {
-        switch (mode)
+        if (mode == "delete")
         {
-            case "local": await UploadFileAsync(file); break;
-            case "cloud": await DownloadFileAsync(file); break;
-            case "delete":
-                if (file.CloudId != null) try { await _api.DeleteFileAsync(file.CloudId.ToString()); } catch { }
-                var lp = Path.Combine(_store.Config.LocalPath, file.LocalPath); try { if (File.Exists(lp)) File.Delete(lp); } catch { }
-                _store.Files.Remove(file); break;
+            if (file.CloudId != null) try { await _api.DeleteFileAsync(file.CloudId.ToString()); } catch { }
+            var lp = Path.Combine(_store.Config.LocalPath, file.LocalPath); try { if (File.Exists(lp)) File.Delete(lp); } catch { }
+            _store.Files.Remove(file);
         }
         SaveState(); StateChanged?.Invoke();
     }
