@@ -211,7 +211,22 @@ public class SyncService
         long pid = long.TryParse(_store.Config.CloudFolderId, out var rid) ? rid : 0;
         foreach (var seg in dir.Split('/', StringSplitOptions.RemoveEmptyEntries))
         {
-            try { var c = await _api.CreateFolderAsync(seg, pid > 0 ? pid.ToString() : null); pid = c.Id; } catch { }
+            try
+                {
+                    var c = await _api.CreateFolderAsync(seg, pid > 0 ? pid.ToString() : null);
+                    pid = c.Id;
+                }
+                catch
+                {
+                    // Folder may exist - find it
+                    try
+                    {
+                        var existingFiles = await _api.GetFilesAsync(pid > 0 ? pid.ToString() : null, 1, 200);
+                        var found = existingFiles.Items.FirstOrDefault(f => f.IsFolder && f.Name == seg);
+                        if (found != null) pid = found.Id;
+                    }
+                    catch { }
+                }
         }
         return pid;
     }
