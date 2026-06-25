@@ -416,6 +416,18 @@ public class StoraApiClient
         return w?.Data ?? new List<OfflineDownloadItem>();
     }
 
+
+    public async Task<FileItem> SyncUploadAsync(Stream fileStream, string fileName, string relativePath)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(fileStream), "file", fileName);
+        content.Add(new StringContent(relativePath), "path");
+        var r = await _httpClient.PostAsync($"{BaseUrl}/api/v2/sync/upload", content);
+        r.EnsureSuccessStatusCode();
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("sync upload failed");
+    }
+
     #endregion
 
     #region Versions
