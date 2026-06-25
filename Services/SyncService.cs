@@ -172,17 +172,6 @@ public class SyncService
         EnsureIndex();
         _isRunning = true;
         await EnsureSyncRootAsync();
-        // Force fallback if CloudFolderId still missing
-        if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
-        {
-            try
-            {
-                var rootFiles = await _api.ListFolderContentsAsync(null);
-                var sf = rootFiles.FirstOrDefault(f => f.IsFolder && f.Name == "Sync");
-                if (sf != null) { _store.Config.CloudFolderId = sf.Id.ToString(); SaveState(); }
-            }
-            catch { }
-        }
         await FullSyncAsync();
         var ms = Math.Max(_store.Config.IntervalSeconds, 60) * 1000;
         _syncTimer = new Timer(async _ => await PollCloudAsync(), null, ms, ms);
@@ -209,23 +198,29 @@ public class SyncService
 
     private void StopWatcher() { _watcher?.Dispose(); _watcher = null; }
 
+    private async Task<string?> FindRootFolderAsync(string folderName)
+    {
+        try
+        {
+            var list = await _api.ListFolderContentsAsync(null);
+            var found = list.FirstOrDefault(f => f.IsFolder && f.Name == folderName);
+            if (found != null) return found.Id.ToString();
+        }
+        catch { }
+        return null;
+    }
+
     private async Task EnsureSyncRootAsync()
     {
-        // Try to create the Sync folder (first run)
-        try { var f = await _api.CreateFolderByPathAsync("Sync"); _store.Config.CloudFolderId = f.Id.ToString(); SaveState(); return; }
-        catch { }
-        
-        // If creation failed (already exists), find it by listing root
-        if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
+        if (!string.IsNullOrEmpty(_store.Config.CloudFolderId))
         {
-            try
-            {
-                var rootFiles = await _api.ListFolderContentsAsync(null);
-                var syncFolder = rootFiles.FirstOrDefault(f => f.IsFolder && f.Name == "Sync");
-                if (syncFolder != null) { _store.Config.CloudFolderId = syncFolder.Id.ToString(); SaveState(); }
-            }
+            try { var test = await _api.ListFolderContentsAsync(_store.Config.CloudFolderId); if (test.Count > 0) return; }
             catch { }
         }
+        var id = await FindRootFolderAsync("Sync");
+        if (id != null) { _store.Config.CloudFolderId = id; SaveState(); return; }
+        try { var f = await _api.CreateFolderByPathAsync("Sync"); _store.Config.CloudFolderId = f.Id.ToString(); SaveState(); }
+        catch { }
     }
 
     private async Task<long> EnsureParentFolderAsync(string rel)
