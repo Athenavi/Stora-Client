@@ -333,17 +333,6 @@ public class SyncService
         var fullPath = Path.Combine(_store.Config.LocalPath, relPath);
         if (!File.Exists(fullPath) || _index == null) return;
 
-        // Ensure Sync folder ID is available
-        if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
-        {
-            _index.AppendJournal(relPath, "debug_no_cloud_folder", $"CloudFolderId is null for {relPath}");
-            await EnsureSyncRootAsync();
-            if (string.IsNullOrEmpty(_store.Config.CloudFolderId))
-            {
-                _index.AppendJournal(relPath, "error_no_cloud_folder", "Still null after EnsureSyncRootAsync");
-                return;
-            }
-        }
 
         try
         {
