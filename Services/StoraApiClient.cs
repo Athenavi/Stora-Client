@@ -200,7 +200,7 @@ public class StoraApiClient
     {
         using var c = new MultipartFormDataContent();
         c.Add(new ByteArrayContent(data), "chunk", "chunk_" + index);
-        c.Add(new StringContent(index.ToString()), "index");
+        c.Add(new StringContent(index.ToString()), "chunk_index");
         var r = await _httpClient.PostAsync($"{BaseUrl}/api/v2/files/upload/chunk?upload_id={uploadId}", c); r.EnsureSuccessStatusCode();
     }
 
