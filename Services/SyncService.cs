@@ -17,6 +17,10 @@ public class SyncService
     private StoraIndex? _index;
     private Timer? _syncTimer;
     private FileSystemWatcher? _watcher;
+    private Timer? _debounceTimer;
+    private readonly HashSet<string> _pendingChanges = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _debounceLock = new();
+    private Timer? _healthCheckTimer;
     private bool _isRunning;
     private readonly string _statePath;
     private const int BLOCK_SIZE = 4 * 1024 * 1024;
@@ -179,7 +183,7 @@ public class SyncService
         StateChanged?.Invoke();
     }
 
-    public void Stop() { _isRunning = false; _syncTimer?.Dispose(); _syncTimer = null; StopWatcher(); SaveState(); _index?.Dispose(); _index = null; StateChanged?.Invoke(); }
+    public void Stop() { _isRunning = false; _syncTimer?.Dispose(); _syncTimer = null; _healthCheckTimer?.Dispose(); _healthCheckTimer = null; _debounceTimer?.Dispose(); _debounceTimer = null; StopWatcher(); SaveState(); _index?.Dispose(); _index = null; StateChanged?.Invoke(); }
 
     private void StartWatcher()
     {
@@ -187,11 +191,56 @@ public class SyncService
         try
         {
             _watcher = new FileSystemWatcher(_store.Config.LocalPath) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
-            _watcher.Created += (s, e) => _ = OnLocalChangeAsync(e.FullPath);
-            _watcher.Changed += (s, e) => _ = OnLocalChangeAsync(e.FullPath);
-            _watcher.Deleted += (s, e) => _ = OnLocalDeleteAsync(e.FullPath);
-            _watcher.Renamed += (s, e) => _ = OnLocalRenameAsync(e.OldFullPath, e.FullPath);
+            _watcher.Created += (s, e) => DebounceChange(e.FullPath);
+            _watcher.Changed += (s, e) => DebounceChange(e.FullPath);
+            _watcher.Deleted += (s, e) => DebounceDelete(e.FullPath);
+            _watcher.Renamed += (s, e) => DebounceRename(e.OldFullPath, e.FullPath);
             _watcher.EnableRaisingEvents = true;
+            // Health check timer: scan for missed changes every 60s
+            _healthCheckTimer = new Timer(async _ => await HealthCheckAsync(), null, 60_000, 60_000);
+        }
+        catch { }
+    }
+
+    private void DebounceChange(string fullPath)
+    {
+        lock (_debounceLock) { _pendingChanges.Add(fullPath); }
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(_ =>
+        {
+            List<string> batch;
+            lock (_debounceLock) { batch = _pendingChanges.ToList(); _pendingChanges.Clear(); }
+            foreach (var p in batch) _ = OnLocalChangeAsync(p);
+        }, null, 2000, Timeout.Infinite);
+    }
+
+    private void DebounceDelete(string fullPath)
+    {
+        _ = OnLocalDeleteAsync(fullPath);
+    }
+
+    private void DebounceRename(string oldPath, string newPath)
+    {
+        _ = OnLocalRenameAsync(oldPath, newPath);
+    }
+
+    private async Task HealthCheckAsync()
+    {
+        if (!_isRunning || _index == null || string.IsNullOrEmpty(_store.Config.LocalPath)) return;
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(_store.Config.LocalPath, "*", SearchOption.AllDirectories))
+            {
+                var rel = GetRelativePath(path);
+                if (rel.StartsWith(".Stora", StringComparison.OrdinalIgnoreCase) || !ShouldSync(Path.GetFileName(rel))) continue;
+                var info = new FileInfo(path);
+                var oldHash = _index.GetHash(rel);
+                if (oldHash == null || oldHash != ComputeHash(path))
+                {
+                    // File changed since last sync - process it
+                    await OnLocalChangeAsync(path);
+                }
+            }
         }
         catch { }
     }
