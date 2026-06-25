@@ -417,6 +417,15 @@ public class StoraApiClient
     }
 
 
+    public async Task<FileItem> SyncUploadCompleteAsync(string uploadId, string path)
+    {
+        var body = new { upload_id = uploadId, path };
+        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/sync/upload/complete", body, JsonOpts);
+        r.EnsureSuccessStatusCode();
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("sync upload complete failed");
+    }
+
     public async Task<FileItem> SyncUploadAssignAsync(string uploadId, string path)
     {
         var body = new { upload_id = uploadId, path };
