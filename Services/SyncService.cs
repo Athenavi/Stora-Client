@@ -393,7 +393,11 @@ public class SyncService
             }
             else
             {
-                using var s = File.OpenRead(fullPath); var u = await _api.UploadFileAsync(s, fileName, targetFolder); cloudId = u.Id;
+                // Use SyncUploadAsync - single API call with path, server creates folders
+                var syncPath = "Sync/" + relPath.Replace("\\", "/");
+                using var fs = File.OpenRead(fullPath);
+                var result = await _api.SyncUploadAsync(fs, fileName, syncPath);
+                cloudId = result.Id;
             }
 
             _index.MarkSynced(relPath, cloudId, hash);
