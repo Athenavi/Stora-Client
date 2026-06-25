@@ -187,9 +187,10 @@ public class StoraApiClient
         var r = await _httpClient.PutAsync($"{BaseUrl}/api/v2/files/{fileId}/content", c); r.EnsureSuccessStatusCode();
     }
 
-    public async Task<string> InitChunkUploadAsync(string fileName, long fileSize, string? folderId = null)
+    public async Task<string> InitChunkUploadAsync(string fileName, long fileSize, string? folderId = null, int chunkSize = 4 * 1024 * 1024)
     {
-        var body = new { filename = fileName, file_size = fileSize, folder_id = folderId };
+        var totalChunks = (int)Math.Ceiling((double)fileSize / chunkSize);
+        var body = new { filename = fileName, file_size = fileSize, chunk_size = chunkSize, total_chunks = totalChunks, folder_id = folderId };
         var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/upload/init", body, JsonOpts); r.EnsureSuccessStatusCode();
         var w = await r.Content.ReadFromJsonAsync<ApiResponse<Dictionary<string, string>>>(JsonOpts);
         return w?.Data?.GetValueOrDefault("upload_id") ?? throw new Exception("init upload failed");
