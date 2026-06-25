@@ -447,6 +447,42 @@ public class StoraApiClient
         return w?.Data ?? throw new Exception("sync upload failed");
     }
 
+
+    public async Task<string> CreateUploadSessionAsync(string fileName, long fileSize, string path)
+    {
+        var body = new { filename = fileName, file_size = fileSize, path };
+        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/sync/upload/session", body, JsonOpts);
+        r.EnsureSuccessStatusCode();
+        var dict = await r.Content.ReadFromJsonAsync<Dictionary<string, string>>(JsonOpts);
+        return dict?.GetValueOrDefault("session_id") ?? throw new Exception("create session failed");
+    }
+
+    public async Task<long> UploadFragmentAsync(string sessionId, Stream data, long start, long end, long totalSize)
+    {
+        using var content = new StreamContent(data);
+        var msg = new HttpRequestMessage(HttpMethod.Put, $"{BaseUrl}/api/v2/sync/upload/session/{sessionId}")
+        {
+            Content = content
+        };
+        msg.Headers.Add("Content-Range", $"bytes {start}-{end}/{totalSize}");
+        var r = await _httpClient.SendAsync(msg);
+        r.EnsureSuccessStatusCode();
+        var json = await r.Content.ReadAsStringAsync();
+        var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (doc.RootElement.TryGetProperty("received", out var rec))
+            return rec.GetInt64();
+        return totalSize;
+    }
+
+    public async Task<long> GetUploadProgressAsync(string sessionId)
+    {
+        var r = await _httpClient.GetAsync($"{BaseUrl}/api/v2/sync/upload/session/{sessionId}");
+        r.EnsureSuccessStatusCode();
+        var dict = await r.Content.ReadFromJsonAsync<Dictionary<string, string>>(JsonOpts);
+        if (dict != null && dict.TryGetValue("received", out var val) && long.TryParse(val, out var n))
+            return n;
+        return 0;
+    }
     #endregion
 
     #region Versions

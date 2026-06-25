@@ -7,9 +7,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-
 namespace StoraDesktop.Services;
-
 public class SyncService
 {
     private readonly StoraApiClient _api;
@@ -24,13 +22,11 @@ public class SyncService
     private bool _isRunning;
     private readonly string _statePath;
     private const int BLOCK_SIZE = 4 * 1024 * 1024;
-
     public SyncStore Store => _store;
     public StoraIndex? Index => _index;
     public bool IsRunning => _isRunning;
     public event Action? StateChanged;
     public event Action<SyncFileState>? FileStatusChanged;
-
     public SyncService(StoraApiClient api)
     {
         _api = api;
@@ -38,19 +34,16 @@ public class SyncService
         Directory.CreateDirectory(Path.GetDirectoryName(_statePath)!);
         LoadState();
     }
-
     private void LoadState()
     {
         try { if (File.Exists(_statePath)) { var json = File.ReadAllText(_statePath); _store = JsonSerializer.Deserialize<SyncStore>(json) ?? new SyncStore(); } }
         catch { _store = new SyncStore(); }
     }
-
     private void SaveState()
     {
         try { File.WriteAllText(_statePath, JsonSerializer.Serialize(_store, new JsonSerializerOptions { WriteIndented = true })); }
         catch { }
     }
-
     private void EnsureIndex()
     {
         if (_index == null && !string.IsNullOrEmpty(_store.Config.LocalPath))
@@ -59,7 +52,6 @@ public class SyncService
             InitStoraDir();
         }
     }
-
     private void InitStoraDir()
     {
         try
@@ -74,24 +66,20 @@ public class SyncService
         }
         catch { }
     }
-
     private static string ComputeHash(string path)
     {
         try { using var sha = SHA256.Create(); using var f = File.OpenRead(path); return BitConverter.ToString(sha.ComputeHash(f)).Replace("-", "").ToLower(); }
         catch { return ""; }
     }
-
     private static string ComputeHashBytes(byte[] data)
     {
         using var sha = SHA256.Create(); return BitConverter.ToString(sha.ComputeHash(data)).Replace("-", "").ToLower();
     }
-
     private string GetRelativePath(string fullPath)
     {
         var root = _store.Config.LocalPath.TrimEnd('\\', '/') + "\\";
         return fullPath.StartsWith(root) ? fullPath.Substring(root.Length) : fullPath;
     }
-
     private bool ShouldSync(string name)
     {
         if (name.StartsWith(".Stora")) return false;
@@ -112,7 +100,6 @@ public class SyncService
         }
         return true;
     }
-
     private void StoreLocalBlocks(string fullPath, string relPath)
     {
         try
@@ -139,7 +126,6 @@ public class SyncService
         }
         catch { }
     }
-
     private HashSet<string> GetLocalBlockHashes(string fileHash)
     {
         if (_index == null) return new HashSet<string>();
@@ -153,7 +139,6 @@ public class SyncService
         }
         catch { return new HashSet<string>(); }
     }
-
     private async Task<HashSet<string>> GetCloudBlockHashes(long cloudId)
     {
         try
@@ -166,10 +151,8 @@ public class SyncService
         }
         catch { return new HashSet<string>(); }
     }
-
     public void UpdateConfig(SyncConfig config) { _store.Config = config; SaveState(); EnsureIndex(); if (_isRunning) { Stop(); _ = StartAsync(); } }
     public bool IsConfigured => !string.IsNullOrEmpty(_store.Config.LocalPath) && Directory.Exists(_store.Config.LocalPath);
-
     public async Task StartAsync()
     {
         if (_isRunning || !IsConfigured) return;
@@ -182,9 +165,7 @@ public class SyncService
         StartWatcher();
         StateChanged?.Invoke();
     }
-
     public void Stop() { _isRunning = false; _syncTimer?.Dispose(); _syncTimer = null; _healthCheckTimer?.Dispose(); _healthCheckTimer = null; _debounceTimer?.Dispose(); _debounceTimer = null; StopWatcher(); SaveState(); _index?.Dispose(); _index = null; StateChanged?.Invoke(); }
-
     private void StartWatcher()
     {
         if (!IsConfigured) return;
@@ -201,7 +182,6 @@ public class SyncService
         }
         catch { }
     }
-
     private void DebounceChange(string fullPath)
     {
         lock (_debounceLock) { _pendingChanges.Add(fullPath); }
@@ -213,17 +193,14 @@ public class SyncService
             foreach (var p in batch) _ = OnLocalChangeAsync(p);
         }, null, 2000, Timeout.Infinite);
     }
-
     private void DebounceDelete(string fullPath)
     {
         _ = OnLocalDeleteAsync(fullPath);
     }
-
     private void DebounceRename(string oldPath, string newPath)
     {
         _ = OnLocalRenameAsync(oldPath, newPath);
     }
-
     private async Task HealthCheckAsync()
     {
         if (!_isRunning || _index == null || string.IsNullOrEmpty(_store.Config.LocalPath)) return;
@@ -244,9 +221,7 @@ public class SyncService
         }
         catch { }
     }
-
     private void StopWatcher() { _watcher?.Dispose(); _watcher = null; }
-
     private async Task<string?> FindRootFolderAsync(string folderName)
     {
         try
@@ -258,7 +233,6 @@ public class SyncService
         catch { }
         return null;
     }
-
     private async Task EnsureSyncRootAsync()
     {
         if (!string.IsNullOrEmpty(_store.Config.CloudFolderId))
@@ -271,7 +245,6 @@ public class SyncService
         try { var f = await _api.CreateFolderByPathAsync("Sync"); _store.Config.CloudFolderId = f.Id.ToString(); SaveState(); }
         catch { }
     }
-
     private async Task<long> EnsureParentFolderAsync(string rel)
     {
         var dir = Path.GetDirectoryName(rel)?.Replace('\\', '/') ?? "";
@@ -309,11 +282,9 @@ public class SyncService
         }
         return pid;
     }
-
     private async Task FullSyncAsync()
     {
         if (!IsConfigured || _index == null) return;
-
         var localFiles = new Dictionary<string, (DateTime mtime, long size, string hash)>(StringComparer.OrdinalIgnoreCase);
         try
         {
@@ -326,11 +297,9 @@ public class SyncService
             }
         }
         catch { }
-
         var dbFiles = _index.GetAllFiles();
         var dbPaths = new HashSet<string>(dbFiles.Select(f => f.path), StringComparer.OrdinalIgnoreCase);
         var changes = new List<(string path, string hash, string action)>();
-
         foreach (var (rel, (mtime, size, hash)) in localFiles)
         {
             if (!dbPaths.Contains(rel))
@@ -350,7 +319,6 @@ public class SyncService
                 }
             }
         }
-
         foreach (var (path, hash, cloudId) in dbFiles)
         {
             if (!localFiles.ContainsKey(path))
@@ -362,33 +330,25 @@ public class SyncService
                 if (cloudId > 0) { try { await _api.DeleteFileAsync(cloudId.ToString()); } catch { } }
             }
         }
-
         if (changes.Count > 0) _index.CreateSnapshot(string.Join(", ", changes.Select(c => $"{c.action}:{c.path}").Take(5)), changes);
-
         SaveState();
-
         var pending = _index.GetPendingFiles();
         foreach (var (path, hash, cloudId) in pending)
         {
             var fullPath = Path.Combine(_store.Config.LocalPath, path);
             if (File.Exists(fullPath)) await UploadFileAsync(path, hash, cloudId > 0 ? cloudId : null);
         }
-
         _store.LastSync = DateTime.UtcNow; SaveState(); StateChanged?.Invoke();
     }
-
     private async Task UploadFileAsync(string relPath, string hash, long? existingCloudId)
     {
         var fullPath = Path.Combine(_store.Config.LocalPath, relPath);
         if (!File.Exists(fullPath) || _index == null) return;
-
-
         try
         {
             StoreLocalBlocks(fullPath, relPath);
             var len = new FileInfo(fullPath).Length;
             var fileName = Path.GetFileName(relPath);
-
             long cloudId;
             if (existingCloudId != null && existingCloudId > 0)
             {
@@ -410,24 +370,36 @@ public class SyncService
                     var r = (int)Math.Min(cs, len - i * cs); if (r < cs) buf = new byte[r];
                     await stream.ReadAsync(buf, 0, r); await _api.UploadChunkAsync(uploadId, i, buf);
                 }
-                var result = await _api.SyncUploadCompleteAsync(uploadId, syncPath);
-                cloudId = result.Id;
+                // Large file: OneDrive-style fragment upload with resume
+                var sessionId = await _api.CreateUploadSessionAsync(fileName, len, syncPath);
+                using var stream2 = File.OpenRead(fullPath);
+                var resume = await _api.GetUploadProgressAsync(sessionId);
+                var buf2 = new byte[cs];
+                for (int i = (int)(resume / cs); i < total; i++)
+                {
+                    if (!_isRunning) return;
+                    var offset = i * cs;
+                    var sz = (int)Math.Min(cs, len - offset);
+                    if (sz < cs) buf2 = new byte[sz];
+                    stream2.Seek(offset, System.IO.SeekOrigin.Begin);
+                    await stream2.ReadAsync(buf2, 0, sz);
+                    using var ms = new System.IO.MemoryStream(buf2, 0, sz);
+                    await _api.UploadFragmentAsync(sessionId, ms, offset, offset + sz - 1, len);
+                }
+                cloudId = len;
             }
             else
             {
-                // Use SyncUploadAsync - single API call with path, server creates folders
                 var syncPath = "Sync/" + relPath.Replace("\\", "/");
                 using var fs = File.OpenRead(fullPath);
                 var result = await _api.SyncUploadAsync(fs, fileName, syncPath);
                 cloudId = result.Id;
             }
-
             _index.MarkSynced(relPath, cloudId, hash);
             _index.AppendJournal(relPath, "synced", hash, len);
         }
         catch (Exception ex) { _index.AppendJournal(relPath, "error", ex.Message); }
     }
-
     private async Task PollCloudAsync()
     {
         if (!_isRunning || _index == null) return;
@@ -451,7 +423,6 @@ public class SyncService
         }
         catch { }
     }
-
     private async Task OnLocalChangeAsync(string fullPath)
     {
         if (!_isRunning || !File.Exists(fullPath) || _index == null) return;
@@ -470,7 +441,6 @@ public class SyncService
         }
         StateChanged?.Invoke();
     }
-
     private async Task OnLocalDeleteAsync(string fullPath)
     {
         if (!_isRunning || _index == null) return;
@@ -483,7 +453,6 @@ public class SyncService
         _index.CreateSnapshot($"deleted: {Path.GetFileName(rel)}", new List<(string, string, string)> { (rel, "", "deleted") });
         StateChanged?.Invoke();
     }
-
     private async Task OnLocalRenameAsync(string oldPath, string newPath)
     {
         if (!_isRunning || _index == null) return;
@@ -495,7 +464,6 @@ public class SyncService
         if (cloudId != null) _index.MarkSynced(newRel, cloudId.Value, _index.GetHash(newRel) ?? "");
         _index.CreateSnapshot($"renamed: {Path.GetFileName(oldPath)} -> {Path.GetFileName(newPath)}", new List<(string, string, string)> { (oldRel, "", "deleted"), (newRel, _index.GetHash(newRel) ?? "", "created") });
     }
-
     /// <summary>
     /// 移除 _store.Files 中实际磁盘上不存在的幽灵文件
     /// </summary>
@@ -514,7 +482,6 @@ public class SyncService
         SaveState();
         StateChanged?.Invoke();
     }
-
     public void SaveStatePublic() => SaveState();
     public async Task ResolveConflictAsync(SyncFileState file, string mode)
     {
