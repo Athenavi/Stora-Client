@@ -417,6 +417,15 @@ public class StoraApiClient
     }
 
 
+    public async Task<FileItem> SyncUploadAssignAsync(string uploadId, string path)
+    {
+        var body = new { upload_id = uploadId, path };
+        var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/sync/upload/assign", body, JsonOpts);
+        r.EnsureSuccessStatusCode();
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("sync upload assign failed");
+    }
+
     public async Task<FileItem> SyncUploadAsync(Stream fileStream, string fileName, string relativePath)
     {
         using var content = new MultipartFormDataContent();
