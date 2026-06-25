@@ -378,18 +378,11 @@ public class SyncService
             }
             else if (len > 10 * 1024 * 1024)
             {
-                var uid = await _api.InitChunkUploadAsync(fileName, len, targetFolder);
-                const int cs = 4 * 1024 * 1024;
-                var total = (int)Math.Ceiling((double)len / cs);
-                using var stream = File.OpenRead(fullPath);
-                var buf = new byte[cs];
-                for (int i = 0; i < total; i++)
-                {
-                    if (!_isRunning) return;
-                    var r = (int)Math.Min(cs, len - i * cs); if (r < cs) buf = new byte[r];
-                    await stream.ReadAsync(buf, 0, r); await _api.UploadChunkAsync(uid, i, buf);
-                }
-                cloudId = await _api.CompleteChunkUploadAsync(uid);
+                // Large file: use SyncUploadAsync (backend supports up to 100MB)
+                var syncPath = "Sync/" + relPath.Replace("\\", "/");
+                using var fs = File.OpenRead(fullPath);
+                var result = await _api.SyncUploadAsync(fs, fileName, syncPath);
+                cloudId = result.Id;
             }
             else
             {
