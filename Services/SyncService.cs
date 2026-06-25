@@ -440,8 +440,7 @@ public class SyncService
                     var r = (int)Math.Min(cs, len - i * cs); if (r < cs) buf = new byte[r];
                     await stream.ReadAsync(buf, 0, r); await _api.UploadChunkAsync(uploadId, i, buf);
                 }
-                await _api.CompleteChunkUploadAsync(uploadId);
-                var result = await _api.SyncUploadAssignAsync(uploadId, syncPath);
+                var result = await _api.SyncUploadCompleteAsync(uploadId, syncPath);
                 cloudId = result.Id;
             }
             else
