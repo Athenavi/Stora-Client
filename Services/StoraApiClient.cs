@@ -155,8 +155,8 @@ public class StoraApiClient
         c.Add(new StreamContent(fileStream), "file", fileName);
         if (!string.IsNullOrEmpty(folderId)) c.Add(new StringContent(folderId), "folder_id");
         var r = await _httpClient.PostAsync($"{BaseUrl}/api/v2/files/upload", c); r.EnsureSuccessStatusCode();
-        var w = await r.Content.ReadFromJsonAsync<FileItem>(JsonOpts);
-        return w ?? throw new Exception("upload failed");
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("upload failed");
     }
 
     public async Task<FileItem> CreateFolderAsync(string name, string? parentId = null)
@@ -165,8 +165,8 @@ public class StoraApiClient
         if (long.TryParse(parentId, out var n) && n > 0) pid = n;
         var body = new { name, parent_id = pid };
         var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/folders", body, JsonOpts); r.EnsureSuccessStatusCode();
-        var w = await r.Content.ReadFromJsonAsync<FileItem>(JsonOpts);
-        return w ?? throw new Exception("create folder failed");
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("create folder failed");
     }
 
     public async Task<FileItem> CreateFolderByPathAsync(string path)
@@ -176,8 +176,8 @@ public class StoraApiClient
         var parentPath = segs.Length > 1 ? "/" + string.Join("/", segs[0..^1]) : "";
         var body = new { name, parent_path = parentPath };
         var r = await _httpClient.PostAsJsonAsync($"{BaseUrl}/api/v2/files/folders/by-path", body, JsonOpts); r.EnsureSuccessStatusCode();
-        var w = await r.Content.ReadFromJsonAsync<FileItem>(JsonOpts);
-        return w ?? throw new Exception("create by path failed");
+        var w = await r.Content.ReadFromJsonAsync<ApiResponse<FileItem>>(JsonOpts);
+        return w?.Data ?? throw new Exception("create by path failed");
     }
 
     public async Task UpdateFileContentAsync(long fileId, Stream fileStream, string fileName)
