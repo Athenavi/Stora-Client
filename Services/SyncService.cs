@@ -387,37 +387,7 @@ public class SyncService
         {
             StoreLocalBlocks(fullPath, relPath);
             var len = new FileInfo(fullPath).Length;
-
-            // Resolve parent folder by walking path segments
             var fileName = Path.GetFileName(relPath);
-            var dirPart = Path.GetDirectoryName(relPath)?.Replace('\\', '/') ?? "";
-            long pid = long.TryParse(_store.Config.CloudFolderId, out var rootId) ? rootId : 0;
-
-            if (!string.IsNullOrEmpty(dirPart))
-            {
-                foreach (var seg in dirPart.Split('/', StringSplitOptions.RemoveEmptyEntries))
-                {
-                    // Find existing folder
-                    try
-                    {
-                        var list = await _api.ListFolderContentsAsync(pid > 0 ? pid.ToString() : null);
-                        var match = list.FirstOrDefault(f => f.IsFolder && f.Name == seg);
-                        if (match != null) { pid = match.Id; continue; }
-                    }
-                    catch { }
-
-                    // Create folder
-                    try { var c = await _api.CreateFolderAsync(seg, pid > 0 ? pid.ToString() : null); pid = c.Id; }
-                    catch
-                    {
-                        // Final fallback
-                        try { var list2 = await _api.ListFolderContentsAsync(pid > 0 ? pid.ToString() : null); var m2 = list2.FirstOrDefault(f => f.IsFolder && f.Name == seg); if (m2 != null) pid = m2.Id; }
-                        catch { }
-                    }
-                }
-            }
-
-            var targetFolder = pid > 0 ? pid.ToString() : _store.Config.CloudFolderId;
 
             long cloudId;
             if (existingCloudId != null && existingCloudId > 0)
